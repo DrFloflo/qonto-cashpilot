@@ -12,10 +12,11 @@ import {
   type AppSettings,
 } from "@/db/schema";
 import { addDays, addMonths } from "date-fns";
+import { getFiscalYearBounds } from "./calculations/fiscal-year";
 import { buildFutureEvents, expandFutureFlows } from "./calculations/flows";
 import { calculateMonthlyTransactions } from "./calculations/monthly";
 import { calculateProjectedCash, generateProjectionTimeframes } from "./calculations/projection";
-import type { DashboardData } from "./calculations/types";
+import type { DashboardData, VatYearData } from "./calculations/types";
 import { computeVatForFiscalYear } from "./calculations/vat";
 
 export { getFiscalYearBounds } from "./calculations/fiscal-year";
@@ -81,8 +82,41 @@ export async function getDashboardData(): Promise<DashboardData> {
     collaboratorNames,
     manualFlows,
   };
-  const currentVat = computeVatForFiscalYear(vatInput);
-  const previousVat = computeVatForFiscalYear({ ...vatInput, offsetYears: -1 });
+  const oldestVatDate = getOldestVatDate(
+    allTransactions,
+    allCustomerInvoices,
+    allSupplierInvoices,
+    allExpenseItems,
+    allFutureFlows,
+  );
+  const oldestFiscalOffset = getOldestFiscalOffset(
+    now,
+    settings,
+    oldestVatDate,
+  );
+  const vatFiscalYears: VatYearData[] = [];
+  let openingVatCredit = 0;
+
+  for (let offset = oldestFiscalOffset; offset <= 0; offset++) {
+    const calculation = computeVatForFiscalYear({
+      ...vatInput,
+      offsetYears: offset,
+      openingVatCredit,
+    });
+    vatFiscalYears.push({
+      offset,
+      vatFiscalSummary: calculation.summary,
+      vatProvisionItems: calculation.items,
+    });
+    openingVatCredit = calculation.summary.carriedOverVat;
+  }
+
+  vatFiscalYears.reverse();
+  const currentVatYear = vatFiscalYears[0];
+  const currentVat = computeVatForFiscalYear({
+    ...vatInput,
+    openingVatCredit: currentVatYear.vatFiscalSummary.openingVatCredit,
+  });
   const futureEvents = buildFutureEvents(
     manualFlows,
     allCustomerInvoices,
@@ -133,12 +167,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       monthRevenue: monthly.revenue,
       monthExpenses: monthly.expenses,
       vatFiscalSummary: currentVat.summary,
-      vatPreviousFiscalSummary: previousVat.summary,
+      vatFiscalYears,
       vatDetails: currentVat.details,
       monthRevenueItems: monthly.revenueItems,
       monthExpenseItems: monthly.expenseItems,
       vatProvisionItems: currentVat.items,
-      previousVatProvisionItems: previousVat.items,
     },
     projectionChart: {
       past7d: projectionForPast(7),
@@ -149,4 +182,43 @@ export async function getDashboardData(): Promise<DashboardData> {
     },
     futureFlows: allFutureFlows.sort((a, b) => a.date.localeCompare(b.date)),
   };
+}
+
+function getOldestVatDate(
+  transactionRows: typeof transactions.$inferSelect[],
+  customerInvoiceRows: typeof customerInvoices.$inferSelect[],
+  supplierInvoiceRows: typeof supplierInvoices.$inferSelect[],
+  expenseRows: typeof expenseItems.$inferSelect[],
+  futureFlowRows: typeof futureFlows.$inferSelect[],
+): string | null {
+  const dates = [
+    ...transactionRows.map((transaction) => transaction.settledAt.slice(0, 10)),
+    ...customerInvoiceRows.map((invoice) => (invoice.paidAt || invoice.issueDate).slice(0, 10)),
+    ...supplierInvoiceRows.map((invoice) => (invoice.paidAt || invoice.issueDate).slice(0, 10)),
+    ...expenseRows.map((expense) => expense.date.slice(0, 10)),
+    ...futureFlowRows.map((flow) => flow.date.slice(0, 10)),
+  ].filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date));
+
+  return dates.length > 0 ? dates.sort()[0] : null;
+}
+
+function getOldestFiscalOffset(
+  now: Date,
+  settings: AppSettings,
+  oldestDate: string | null,
+): number {
+  if (!oldestDate) return 0;
+
+  let offset = 0;
+  while (
+    oldestDate < getFiscalYearBounds(
+      now,
+      settings.fiscalYearEndDay,
+      settings.fiscalYearEndMonth,
+      offset,
+    ).startDateStr
+  ) {
+    offset--;
+  }
+  return offset;
 }

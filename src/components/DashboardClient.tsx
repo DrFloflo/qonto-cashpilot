@@ -24,7 +24,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [notification, setNotification] = useState<DashboardNotificationState | null>(null);
   const [activeModal, setActiveModal] = useState<DetailModalType>(null);
-  const [selectedFiscalOffset, setSelectedFiscalOffset] = useState<0 | -1>(0);
+  const [selectedFiscalOffset, setSelectedFiscalOffset] = useState(0);
   const [activeTab, setActiveTab] = useState<"dashboard" | "expenses">("dashboard");
 
   const handleSync = async () => {
@@ -56,14 +56,11 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
 
   const { account, syncState, kpis, projectionChart, futureFlows } = data;
 
-  const currentVatSummary =
-    selectedFiscalOffset === 0
-      ? kpis.vatFiscalSummary
-      : (kpis.vatPreviousFiscalSummary ?? kpis.vatFiscalSummary);
-  const currentVatItems =
-    selectedFiscalOffset === 0
-      ? kpis.vatProvisionItems
-      : (kpis.previousVatProvisionItems ?? []);
+  const selectedVatYear =
+    kpis.vatFiscalYears.find((year) => year.offset === selectedFiscalOffset)
+    ?? kpis.vatFiscalYears[0];
+  const currentVatSummary = selectedVatYear?.vatFiscalSummary ?? kpis.vatFiscalSummary;
+  const currentVatItems = selectedVatYear?.vatProvisionItems ?? kpis.vatProvisionItems;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -121,6 +118,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
             {/* Detailed Breakdown Card (TVA Details) */}
             <VatFiscalSection
               summary={currentVatSummary}
+              fiscalYears={kpis.vatFiscalYears}
               selectedFiscalOffset={selectedFiscalOffset}
               onOffsetChange={setSelectedFiscalOffset}
               onOpenSettings={() => setIsSettingsOpen(true)}
@@ -161,6 +159,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
         kpis={kpis}
         currentVatSummary={currentVatSummary}
         currentVatItems={currentVatItems}
+        fiscalYears={kpis.vatFiscalYears}
         selectedFiscalOffset={selectedFiscalOffset}
         onOffsetChange={setSelectedFiscalOffset}
         onOpenSettings={() => setIsSettingsOpen(true)}

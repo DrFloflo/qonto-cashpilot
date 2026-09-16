@@ -37,6 +37,7 @@ export interface VatFiscalSummary {
   deductibleReal: number;
   deductibleFuture: number;
   totalDeductible: number;
+  openingVatCredit: number;
   rawBalance: number;
   status: "due" | "credit_refundable" | "credit_carried_over";
   statusLabel: string;
@@ -54,6 +55,7 @@ export interface VatFiscalSummary {
 }
 
 export interface VatYearData {
+  offset: number;
   vatFiscalSummary: VatFiscalSummary;
   vatProvisionItems: VatItem[];
 }
@@ -134,12 +136,11 @@ export interface DashboardData {
     monthRevenue: number;
     monthExpenses: number;
     vatFiscalSummary: VatFiscalSummary;
-    vatPreviousFiscalSummary?: VatFiscalSummary;
+    vatFiscalYears: VatYearData[];
     vatDetails: VatDetails;
     monthRevenueItems: Transaction[];
     monthExpenseItems: Transaction[];
     vatProvisionItems: VatItem[];
-    previousVatProvisionItems?: VatItem[];
   };
   projectionChart: ProjectionTimeframes & {
     past7d?: ProjectionTimeframes;

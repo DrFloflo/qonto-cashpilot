@@ -27,6 +27,7 @@ interface VatCalculationInput {
   collaboratorNames: Map<string, string>;
   manualFlows: ExpandedFlow[];
   offsetYears?: number;
+  openingVatCredit?: number;
 }
 
 const REGIME_LABELS: Record<string, string> = {
@@ -46,6 +47,7 @@ export function computeVatForFiscalYear({
   collaboratorNames,
   manualFlows,
   offsetYears = 0,
+  openingVatCredit = 0,
 }: VatCalculationInput): VatCalculationResult {
   const bounds = getFiscalYearBounds(
     now,
@@ -186,7 +188,8 @@ export function computeVatForFiscalYear({
   const manualOutflowsVat = sumFlows(fiscalFutureFlows, "outflow", "vatAmount");
   const totalCollected = collectedReal + futureToCollect + manualInflowsVat;
   const totalDeductible = deductibleReal + futureToDeduct + manualOutflowsVat;
-  const rawBalance = roundCurrency(totalCollected - totalDeductible);
+  const normalizedOpeningVatCredit = roundCurrency(Math.max(0, openingVatCredit));
+  const rawBalance = roundCurrency(totalCollected - totalDeductible - normalizedOpeningVatCredit);
 
   let revenueReal = 0;
   let expensesReal = 0;
@@ -217,6 +220,7 @@ export function computeVatForFiscalYear({
     deductibleReal: roundCurrency(deductibleReal),
     deductibleFuture: roundCurrency(futureToDeduct + manualOutflowsVat),
     totalDeductible: roundCurrency(totalDeductible),
+    openingVatCredit: normalizedOpeningVatCredit,
     rawBalance,
     ...balanceStatus,
     threshold,
@@ -273,7 +277,7 @@ function getBalanceStatus(rawBalance: number, threshold: number): Pick<
     if (credit >= threshold) {
       return {
         status: "credit_refundable",
-        statusLabel: `Crédit de TVA remboursable (≥ ${threshold} €)`,
+        statusLabel: `Crédit de TVA considéré comme remboursé (≥ ${threshold} €)`,
         vatToProvision: 0,
         refundableVat: roundCurrency(credit),
         carriedOverVat: 0,

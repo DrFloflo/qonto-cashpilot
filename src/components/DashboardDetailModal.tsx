@@ -2,7 +2,7 @@
 
 import React from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { DashboardData, VatItem, VatFiscalSummary } from "@/lib/calculations";
+import type { DashboardData, VatItem, VatFiscalSummary, VatYearData } from "@/lib/calculations";
 import type { DetailModalType } from "@/components/DashboardKpiCards";
 import { X, Settings } from "lucide-react";
 
@@ -12,8 +12,9 @@ interface DashboardDetailModalProps {
   kpis: DashboardData["kpis"];
   currentVatSummary: VatFiscalSummary | undefined;
   currentVatItems: VatItem[];
-  selectedFiscalOffset: 0 | -1;
-  onOffsetChange: (offset: 0 | -1) => void;
+  fiscalYears: VatYearData[];
+  selectedFiscalOffset: number;
+  onOffsetChange: (offset: number) => void;
   onOpenSettings: () => void;
 }
 
@@ -23,6 +24,7 @@ export function DashboardDetailModal({
   kpis,
   currentVatSummary,
   currentVatItems,
+  fiscalYears,
   selectedFiscalOffset,
   onOffsetChange,
   onOpenSettings,
@@ -116,7 +118,7 @@ export function DashboardDetailModal({
 
           {activeModal === "vat" && (
             <div className="space-y-4">
-              {/* Fiscal summary banner with N / N-1 switcher */}
+              {/* Fiscal summary banner with fiscal-year selector */}
               <div className="p-3.5 rounded-lg border border-border/80 bg-muted/30 text-xs space-y-2.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border/60">
                   <div>
@@ -124,32 +126,22 @@ export function DashboardDetailModal({
                       <div className="font-semibold text-foreground">
                         {currentVatSummary?.fiscalYear.label}
                       </div>
-                      <div className="inline-flex rounded-md bg-background p-0.5 border border-border/60 text-[10px]">
-                        <button
-                          onClick={() => onOffsetChange(0)}
-                          className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                            selectedFiscalOffset === 0
-                              ? "bg-primary text-primary-foreground shadow-xs"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          Exercice N
-                        </button>
-                        <button
-                          onClick={() => onOffsetChange(-1)}
-                          className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                            selectedFiscalOffset === -1
-                              ? "bg-primary text-primary-foreground shadow-xs"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          Exercice N-1
-                        </button>
-                      </div>
+                      <select
+                        value={selectedFiscalOffset}
+                        onChange={(event) => onOffsetChange(Number(event.target.value))}
+                        aria-label="Sélectionner un exercice fiscal"
+                        className="rounded-md bg-background border border-border/60 px-2 py-1 text-[10px] font-medium text-foreground"
+                      >
+                        {fiscalYears.map((year) => (
+                          <option key={year.offset} value={year.offset}>
+                            {formatFiscalYearOption(year)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">
                       {currentVatSummary?.fiscalYear.regimeLabel} • Exigibilité {currentVatSummary?.fiscalYear.paymentMethod === "debits" ? "sur les débits" : "sur les encaissements"}
-                      {selectedFiscalOffset === -1 && " (Exercice précédent clôturé)"}
+                      {selectedFiscalOffset < 0 && " (Exercice clôturé)"}
                     </div>
                   </div>
                   <button
@@ -178,19 +170,15 @@ export function DashboardDetailModal({
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Solde Brut</span>
-                    <strong className={(currentVatSummary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}>
-                      {(currentVatSummary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(currentVatSummary?.rawBalance ?? 0)}
+                    <span className="text-[11px] text-muted-foreground block">Crédit antérieur imputé</span>
+                    <strong className="text-blue-600 dark:text-blue-400">
+                      -{formatCurrency(currentVatSummary?.openingVatCredit ?? 0)}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Statut Fiscal</span>
-                    <strong className="text-foreground">
-                      {currentVatSummary?.status === "credit_carried_over"
-                        ? "Reporté (< 760 €)"
-                        : currentVatSummary?.status === "credit_refundable"
-                        ? "Remboursable"
-                        : "À provisionner"}
+                    <span className="text-[11px] text-muted-foreground block">Solde net</span>
+                    <strong className={(currentVatSummary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}>
+                      {(currentVatSummary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(currentVatSummary?.rawBalance ?? 0)}
                     </strong>
                   </div>
                 </div>
@@ -249,4 +237,10 @@ export function DashboardDetailModal({
       </div>
     </div>
   );
+}
+
+function formatFiscalYearOption(year: VatYearData): string {
+  const startYear = year.vatFiscalSummary.fiscalYear.startDateStr.slice(0, 4);
+  const endYear = year.vatFiscalSummary.fiscalYear.endDateStr.slice(0, 4);
+  return startYear === endYear ? endYear : `${startYear}-${endYear}`;
 }

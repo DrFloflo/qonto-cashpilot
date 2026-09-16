@@ -2,19 +2,21 @@
 
 import React from "react";
 import { formatCurrency } from "@/lib/utils";
-import type { VatFiscalSummary } from "@/lib/calculations";
+import type { VatFiscalSummary, VatYearData } from "@/lib/calculations";
 import { Receipt, Settings, TrendingUp, TrendingDown, Scale } from "lucide-react";
 
 interface VatFiscalSectionProps {
   summary: VatFiscalSummary | undefined;
-  selectedFiscalOffset: 0 | -1;
-  onOffsetChange: (offset: 0 | -1) => void;
+  fiscalYears: VatYearData[];
+  selectedFiscalOffset: number;
+  onOffsetChange: (offset: number) => void;
   onOpenSettings: () => void;
   onOpenVatDetail: () => void;
 }
 
 export function VatFiscalSection({
   summary,
+  fiscalYears,
   selectedFiscalOffset,
   onOffsetChange,
   onOpenSettings,
@@ -30,33 +32,22 @@ export function VatFiscalSection({
               <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
                 TVA sur l&apos;Exercice Fiscal ({summary?.fiscalYear.startDateStr} au {summary?.fiscalYear.endDateStr})
               </h3>
-              {/* Selector N / N-1 */}
-              <div className="inline-flex rounded-md bg-muted p-0.5 border border-border/50 text-[10px]">
-                <button
-                  onClick={() => onOffsetChange(0)}
-                  className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                    selectedFiscalOffset === 0
-                      ? "bg-background text-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Exercice N
-                </button>
-                <button
-                  onClick={() => onOffsetChange(-1)}
-                  className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                    selectedFiscalOffset === -1
-                      ? "bg-background text-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Exercice N-1
-                </button>
-              </div>
+              <select
+                value={selectedFiscalOffset}
+                onChange={(event) => onOffsetChange(Number(event.target.value))}
+                aria-label="Sélectionner un exercice fiscal"
+                className="rounded-md bg-muted border border-border/50 px-2 py-1 text-[10px] font-medium text-foreground"
+              >
+                {fiscalYears.map((year) => (
+                  <option key={year.offset} value={year.offset}>
+                    {formatFiscalYearOption(year)}
+                  </option>
+                ))}
+              </select>
             </div>
             <span className="text-[10px] text-muted-foreground">
               {summary?.fiscalYear.regimeLabel} • Exigibilité {summary?.fiscalYear.paymentMethod === "debits" ? "sur les débits" : "sur encaissements"}
-              {selectedFiscalOffset === -1 && " (Exercice précédent clôturé)"}
+              {selectedFiscalOffset < 0 && " (Exercice clôturé)"}
             </span>
           </div>
         </div>
@@ -98,7 +89,17 @@ export function VatFiscalSection({
         </div>
 
         <div className="p-2.5 rounded-lg bg-background border border-border/60">
-          <div className="text-muted-foreground text-[11px]">Solde Brut de TVA</div>
+          <div className="text-muted-foreground text-[11px]">Crédit antérieur imputé</div>
+          <div className="text-sm font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
+            -{formatCurrency(summary?.openingVatCredit ?? 0)}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            Report issu de l’exercice précédent
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-background border border-border/60">
+          <div className="text-muted-foreground text-[11px]">Solde net de TVA</div>
           <div className={`text-sm font-semibold mt-0.5 ${(summary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
             {(summary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(summary?.rawBalance ?? 0)}
           </div>
@@ -107,23 +108,6 @@ export function VatFiscalSection({
           </div>
         </div>
 
-        <div className="p-2.5 rounded-lg bg-background border border-border/60">
-          <div className="text-muted-foreground text-[11px]">Règle Fiscale Française</div>
-          <div className="text-sm font-semibold text-foreground mt-0.5 truncate" title={summary?.statusLabel}>
-            {summary?.status === "credit_carried_over"
-              ? "Crédit Reporté"
-              : summary?.status === "credit_refundable"
-              ? "Remboursable"
-              : "À Provisionner"}
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
-            {summary?.status === "credit_carried_over"
-              ? `Non remboursable (< ${summary.threshold} €)`
-              : summary?.status === "credit_refundable"
-              ? `Seuil légal ≥ ${summary.threshold} € atteint`
-              : "À déclarer et payer"}
-          </div>
-        </div>
       </div>
 
       {/* Encarts Activité : CA et Charges de l'année en cours / exercice */}
@@ -131,7 +115,7 @@ export function VatFiscalSection({
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wider">
             <Scale className="w-3.5 h-3.5 text-muted-foreground" />
-            <span>Activité {selectedFiscalOffset === 0 ? "de l'Exercice en cours" : "de l'Exercice N-1"}</span>
+            <span>Activité {selectedFiscalOffset === 0 ? "de l'Exercice en cours" : "de l'Exercice clôturé"}</span>
           </div>
           <span className="text-[10px] text-muted-foreground">
             {summary?.fiscalYear.startDateStr} au {summary?.fiscalYear.endDateStr}
@@ -164,7 +148,7 @@ export function VatFiscalSection({
           <div className="p-2.5 rounded-lg bg-background border border-border/60">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-[11px]">
-                Total des Charges ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
+                Total des Charges ({selectedFiscalOffset === 0 ? "Exercice en cours" : "Exercice clôturé"})
               </span>
               <div className="p-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
                 <TrendingDown className="w-3.5 h-3.5" />
@@ -215,4 +199,10 @@ export function VatFiscalSection({
       </div>
     </section>
   );
+}
+
+function formatFiscalYearOption(year: VatYearData): string {
+  const startYear = year.vatFiscalSummary.fiscalYear.startDateStr.slice(0, 4);
+  const endYear = year.vatFiscalSummary.fiscalYear.endDateStr.slice(0, 4);
+  return startYear === endYear ? endYear : `${startYear}-${endYear}`;
 }
