@@ -12,8 +12,8 @@ import {
   ReferenceLine,
 } from "recharts";
 import { formatCurrency } from "@/lib/utils";
-import type { ChartPoint, ChartDayOperation } from "@/lib/calculations";
-import { X, ArrowUpRight, ArrowDownRight, Calendar, Info } from "lucide-react";
+import type { ChartPoint} from "@/lib/calculations";
+import { X, ArrowUpRight, ArrowDownRight, Calendar } from "lucide-react";
 
 interface CashChartProps {
   timeframe30d: ChartPoint[];
