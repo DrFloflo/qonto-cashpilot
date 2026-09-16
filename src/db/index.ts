@@ -86,7 +86,29 @@ sqlite.exec(`
     status TEXT DEFAULT 'idle',
     error_message TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    fiscal_year_end_day INTEGER NOT NULL DEFAULT 31,
+    fiscal_year_end_month INTEGER NOT NULL DEFAULT 12,
+    vat_regime TEXT NOT NULL DEFAULT 'normal_monthly',
+    vat_payment_method TEXT NOT NULL DEFAULT 'debits',
+    updated_at TEXT NOT NULL
+  );
 `);
+
+// Ensure default settings exist
+try {
+  const existingSettings = sqlite.prepare("SELECT id FROM app_settings WHERE id = 'default'").get();
+  if (!existingSettings) {
+    sqlite.prepare(`
+      INSERT INTO app_settings (id, fiscal_year_end_day, fiscal_year_end_month, vat_regime, vat_payment_method, updated_at)
+      VALUES ('default', 31, 12, 'normal_monthly', 'debits', ?)
+    `).run(new Date().toISOString());
+  }
+} catch {
+  // ignore
+}
 
 try {
   sqlite.exec(`ALTER TABLE transactions ADD COLUMN settled_balance REAL;`);

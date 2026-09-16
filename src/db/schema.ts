@@ -89,6 +89,18 @@ export const syncStates = sqliteTable("sync_states", {
   errorMessage: text("error_message"),
 });
 
+/**
+ * AppSettings - Fiscal parameters and company settings
+ */
+export const appSettings = sqliteTable("app_settings", {
+  id: text("id").primaryKey().default("default"),
+  fiscalYearEndDay: integer("fiscal_year_end_day").notNull().default(31),
+  fiscalYearEndMonth: integer("fiscal_year_end_month").notNull().default(12),
+  vatRegime: text("vat_regime").notNull().default("normal_monthly"), // "normal_monthly" | "normal_quarterly" | "simplified"
+  vatPaymentMethod: text("vat_payment_method").notNull().default("debits"), // "debits" | "encaissements"
+  updatedAt: text("updated_at").notNull(),
+});
+
 export type Account = typeof accounts.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type CustomerInvoice = typeof customerInvoices.$inferSelect;
@@ -96,3 +108,4 @@ export type SupplierInvoice = typeof supplierInvoices.$inferSelect;
 export type FutureFlow = typeof futureFlows.$inferSelect;
 export type NewFutureFlow = typeof futureFlows.$inferInsert;
 export type SyncState = typeof syncStates.$inferSelect;
+export type AppSettings = typeof appSettings.$inferSelect;

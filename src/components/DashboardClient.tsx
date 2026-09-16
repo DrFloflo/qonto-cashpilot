@@ -5,6 +5,7 @@ import { formatCurrency, formatDateTime, formatDate } from "@/lib/utils";
 import type { DashboardData } from "@/lib/calculations";
 import { CashProjectionChart } from "@/components/CashProjectionChart";
 import { FutureFlowsSection } from "@/components/FutureFlowsSection";
+import { FiscalSettingsModal } from "@/components/FiscalSettingsModal";
 import { syncAction } from "@/app/actions";
 import {
   RefreshCw,
@@ -17,6 +18,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
+  Settings,
   X,
 } from "lucide-react";
 
@@ -29,6 +31,7 @@ type DetailModalType = "revenue" | "expenses" | "vat" | null;
 export function DashboardClient({ initialData }: DashboardClientProps) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [activeModal, setActiveModal] = useState<DetailModalType>(null);
 
@@ -89,6 +92,14 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           </div>
 
           <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              title="Paramètres fiscaux (date de clôture, régime TVA)"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/70 transition-colors cursor-pointer shadow-xs"
+            >
+              <Settings className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>Paramètres</span>
+            </button>
             <button
               onClick={handleSync}
               disabled={isSyncing}
@@ -166,25 +177,55 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
             </div>
           </div>
 
-          {/* Card 3: TVA à Provisionner (Interactive clickable) */}
+          {/* Card 3: TVA à Provisionner / Crédit (Interactive clickable) */}
           <div
             onClick={() => setActiveModal("vat")}
             className="rounded-xl border border-border bg-card p-4 shadow-xs hover:border-amber-500/50 hover:shadow-sm transition-all cursor-pointer group"
           >
             <div className="flex items-center justify-between text-muted-foreground mb-2">
               <span className="text-xs font-medium uppercase tracking-wider group-hover:text-foreground transition-colors flex items-center gap-1">
-                TVA à Provisionner
+                {kpis.vatFiscalSummary?.status === "credit_refundable"
+                  ? "Crédit TVA Remboursable"
+                  : kpis.vatFiscalSummary?.status === "credit_carried_over"
+                  ? "Crédit TVA Reporté"
+                  : "TVA à Provisionner"}
                 <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
               </span>
-              <div className="p-1.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <div
+                className={`p-1.5 rounded-md ${
+                  kpis.vatFiscalSummary?.status === "credit_refundable"
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : kpis.vatFiscalSummary?.status === "credit_carried_over"
+                    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                }`}
+              >
                 <Percent className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight">
-              {formatCurrency(kpis.vatToProvision)}
+            <div
+              className={`text-2xl font-bold tracking-tight ${
+                kpis.vatFiscalSummary?.status === "credit_refundable"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : kpis.vatFiscalSummary?.status === "credit_carried_over"
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-amber-600 dark:text-amber-400"
+              }`}
+            >
+              {kpis.vatFiscalSummary?.status === "credit_refundable"
+                ? `-${formatCurrency(kpis.vatFiscalSummary.refundableVat)}`
+                : kpis.vatFiscalSummary?.status === "credit_carried_over"
+                ? formatCurrency(kpis.vatFiscalSummary.carriedOverVat)
+                : formatCurrency(kpis.vatToProvision)}
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center justify-between">
-              <span>Collectée nette déductible</span>
+              <span className="truncate max-w-[160px]" title={kpis.vatFiscalSummary?.statusLabel || "Solde exercice fiscal"}>
+                {kpis.vatFiscalSummary?.status === "credit_carried_over"
+                  ? `Reporté (< ${kpis.vatFiscalSummary.threshold} €)`
+                  : kpis.vatFiscalSummary?.status === "credit_refundable"
+                  ? `Remboursable (≥ ${kpis.vatFiscalSummary.threshold} €)`
+                  : "Exercice fiscal en cours"}
+              </span>
               <span className="text-primary font-medium underline text-[10px]">Voir détail</span>
             </p>
           </div>
@@ -241,41 +282,77 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
               <Receipt className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                Décomposition TVA & Vigilance Fiscale
-              </h3>
+              <div>
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  TVA sur l&apos;Exercice Fiscal ({kpis.vatFiscalSummary?.fiscalYear.startDateStr} au {kpis.vatFiscalSummary?.fiscalYear.endDateStr})
+                </h3>
+                <span className="text-[10px] text-muted-foreground">
+                  {kpis.vatFiscalSummary?.fiscalYear.regimeLabel} • Exigibilité {kpis.vatFiscalSummary?.fiscalYear.paymentMethod === "debits" ? "sur les débits" : "sur encaissements"}
+                </span>
+              </div>
             </div>
-            <button
-              onClick={() => setActiveModal("vat")}
-              className="text-[11px] text-primary hover:underline font-medium cursor-pointer self-start sm:self-auto"
-            >
-              Afficher la liste détaillée des lignes de TVA →
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="text-[11px] text-muted-foreground hover:text-foreground font-medium flex items-center gap-1 cursor-pointer"
+              >
+                <Settings className="w-3 h-3" /> Modifier l&apos;exercice
+              </button>
+              <button
+                onClick={() => setActiveModal("vat")}
+                className="text-[11px] text-primary hover:underline font-medium cursor-pointer self-start sm:self-auto"
+              >
+                Détail des pièces de TVA →
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div className="p-2.5 rounded-lg bg-background border border-border/60">
-              <div className="text-muted-foreground text-[11px]">TVA Réelle Encaissée</div>
+              <div className="text-muted-foreground text-[11px]">Total TVA Collectée (Réelle + Prévi)</div>
               <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                +{formatCurrency(kpis.vatDetails.collectedReal)}
+                +{formatCurrency(kpis.vatFiscalSummary?.totalCollected ?? kpis.vatDetails.collectedReal)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Réel: {formatCurrency(kpis.vatFiscalSummary?.collectedReal ?? 0)}
               </div>
             </div>
+
             <div className="p-2.5 rounded-lg bg-background border border-border/60">
-              <div className="text-muted-foreground text-[11px]">TVA Réelle Décaissée</div>
+              <div className="text-muted-foreground text-[11px]">Total TVA Déductible (Réelle + Prévi)</div>
               <div className="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-0.5">
-                -{formatCurrency(kpis.vatDetails.deductibleReal)}
+                -{formatCurrency(kpis.vatFiscalSummary?.totalDeductible ?? kpis.vatDetails.deductibleReal)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Réel: {formatCurrency(kpis.vatFiscalSummary?.deductibleReal ?? 0)}
               </div>
             </div>
+
             <div className="p-2.5 rounded-lg bg-background border border-border/60">
-              <div className="text-muted-foreground text-[11px]">TVA Factures Clients non payées</div>
-              <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                +{formatCurrency(kpis.vatDetails.futureToCollect)}
+              <div className="text-muted-foreground text-[11px]">Solde Brut de TVA</div>
+              <div className={`text-sm font-semibold mt-0.5 ${(kpis.vatFiscalSummary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {(kpis.vatFiscalSummary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(kpis.vatFiscalSummary?.rawBalance ?? 0)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {(kpis.vatFiscalSummary?.rawBalance ?? 0) >= 0 ? "TVA nette à décaisser" : "Crédit de TVA brut"}
               </div>
             </div>
+
             <div className="p-2.5 rounded-lg bg-background border border-border/60">
-              <div className="text-muted-foreground text-[11px]">TVA Fournisseurs à payer</div>
-              <div className="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-0.5">
-                -{formatCurrency(kpis.vatDetails.futureToDeduct)}
+              <div className="text-muted-foreground text-[11px]">Règle Fiscale Française</div>
+              <div className="text-sm font-semibold text-foreground mt-0.5 truncate" title={kpis.vatFiscalSummary?.statusLabel}>
+                {kpis.vatFiscalSummary?.status === "credit_carried_over"
+                  ? "Crédit Reporté"
+                  : kpis.vatFiscalSummary?.status === "credit_refundable"
+                  ? "Remboursable"
+                  : "À Provisionner"}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {kpis.vatFiscalSummary?.status === "credit_carried_over"
+                  ? `Non remboursable (< ${kpis.vatFiscalSummary.threshold} €)`
+                  : kpis.vatFiscalSummary?.status === "credit_refundable"
+                  ? `Seuil légal ≥ ${kpis.vatFiscalSummary.threshold} € atteint`
+                  : "À déclarer et payer"}
               </div>
             </div>
           </div>
@@ -389,43 +466,100 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
               )}
 
               {activeModal === "vat" && (
-                kpis.vatProvisionItems.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-8">Aucune ligne de TVA identifiée pour le calcul.</p>
-                ) : (
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-muted/40 text-muted-foreground border-b border-border/40 font-medium">
-                      <tr>
-                        <th className="py-2.5 px-3">Date</th>
-                        <th className="py-2.5 px-3">Origine</th>
-                        <th className="py-2.5 px-3">Libellé</th>
-                        <th className="py-2.5 px-3 text-right">Base HT</th>
-                        <th className="py-2.5 px-3 text-right">TVA</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40">
-                      {kpis.vatProvisionItems.map((item) => {
-                        const isCollectee = item.type === "collectee";
-                        return (
-                          <tr key={item.id} className="hover:bg-muted/20">
-                            <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(item.date)}</td>
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <span className="inline-flex text-[10px] rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
-                                {item.source}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 font-medium max-w-[220px] truncate">{item.label}</td>
-                            <td className="py-2.5 px-3 text-right text-muted-foreground whitespace-nowrap">
-                              {formatCurrency(item.amountHt)}
-                            </td>
-                            <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${isCollectee ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                              {isCollectee ? "+" : "-"}{formatCurrency(item.vatAmount)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )
+                <div className="space-y-4">
+                  {/* Fiscal summary banner */}
+                  <div className="p-3.5 rounded-lg border border-border/80 bg-muted/30 text-xs space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-border/60">
+                      <div>
+                        <div className="font-semibold text-foreground">
+                          {kpis.vatFiscalSummary?.fiscalYear.label}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {kpis.vatFiscalSummary?.fiscalYear.regimeLabel} • Exigibilité {kpis.vatFiscalSummary?.fiscalYear.paymentMethod === "debits" ? "sur les débits" : "sur les encaissements"}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setActiveModal(null);
+                          setIsSettingsOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium cursor-pointer self-start sm:self-auto"
+                      >
+                        <Settings className="w-3 h-3" />
+                        Changer les paramètres
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div>
+                        <span className="text-[11px] text-muted-foreground block">Total Collectée</span>
+                        <strong className="text-emerald-600 dark:text-emerald-400">
+                          +{formatCurrency(kpis.vatFiscalSummary?.totalCollected ?? 0)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground block">Total Déductible</span>
+                        <strong className="text-rose-600 dark:text-rose-400">
+                          -{formatCurrency(kpis.vatFiscalSummary?.totalDeductible ?? 0)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground block">Solde Brut</span>
+                        <strong className={(kpis.vatFiscalSummary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {(kpis.vatFiscalSummary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(kpis.vatFiscalSummary?.rawBalance ?? 0)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground block">Statut Fiscal</span>
+                        <strong className="text-foreground">
+                          {kpis.vatFiscalSummary?.status === "credit_carried_over"
+                            ? "Reporté (< 760 €)"
+                            : kpis.vatFiscalSummary?.status === "credit_refundable"
+                            ? "Remboursable"
+                            : "À provisionner"}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {kpis.vatProvisionItems.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-8">Aucune ligne de TVA identifiée pour cet exercice fiscal.</p>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/40 text-muted-foreground border-b border-border/40 font-medium">
+                        <tr>
+                          <th className="py-2.5 px-3">Date</th>
+                          <th className="py-2.5 px-3">Origine</th>
+                          <th className="py-2.5 px-3">Libellé</th>
+                          <th className="py-2.5 px-3 text-right">Base HT</th>
+                          <th className="py-2.5 px-3 text-right">TVA</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {kpis.vatProvisionItems.map((item) => {
+                          const isCollectee = item.type === "collectee";
+                          return (
+                            <tr key={item.id} className="hover:bg-muted/20">
+                              <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(item.date)}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span className="inline-flex text-[10px] rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
+                                  {item.source}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-medium max-w-[220px] truncate">{item.label}</td>
+                              <td className="py-2.5 px-3 text-right text-muted-foreground whitespace-nowrap">
+                                {formatCurrency(item.amountHt)}
+                              </td>
+                              <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${isCollectee ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                                {isCollectee ? "+" : "-"}{formatCurrency(item.vatAmount)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               )}
             </div>
 
@@ -440,6 +574,16 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Fiscal Settings Modal */}
+      {data.settings && (
+        <FiscalSettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          settings={data.settings}
+          onSaved={handleDataUpdated}
+        />
       )}
     </div>
   );

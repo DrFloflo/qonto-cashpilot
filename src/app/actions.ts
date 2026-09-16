@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { futureFlows } from "@/db/schema";
+import { futureFlows, appSettings } from "@/db/schema";
 import { syncQontoData } from "@/lib/qonto";
 import { getDashboardData } from "@/lib/calculations";
 import { eq } from "drizzle-orm";
@@ -9,6 +9,40 @@ import { revalidatePath } from "next/cache";
 
 export async function fetchDashboardDataAction() {
   return await getDashboardData();
+}
+
+export async function saveSettingsAction(data: {
+  fiscalYearEndDay: number;
+  fiscalYearEndMonth: number;
+  vatRegime: "normal_monthly" | "normal_quarterly" | "simplified";
+  vatPaymentMethod: "debits" | "encaissements";
+}) {
+  const nowIso = new Date().toISOString();
+
+  db.insert(appSettings)
+    .values({
+      id: "default",
+      fiscalYearEndDay: data.fiscalYearEndDay,
+      fiscalYearEndMonth: data.fiscalYearEndMonth,
+      vatRegime: data.vatRegime,
+      vatPaymentMethod: data.vatPaymentMethod,
+      updatedAt: nowIso,
+    })
+    .onConflictDoUpdate({
+      target: appSettings.id,
+      set: {
+        fiscalYearEndDay: data.fiscalYearEndDay,
+        fiscalYearEndMonth: data.fiscalYearEndMonth,
+        vatRegime: data.vatRegime,
+        vatPaymentMethod: data.vatPaymentMethod,
+        updatedAt: nowIso,
+      },
+    })
+    .run();
+
+  const updatedData = await getDashboardData();
+  revalidatePath("/");
+  return { success: true, updatedData };
 }
 
 export async function syncAction() {
