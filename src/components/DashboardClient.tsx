@@ -10,7 +10,9 @@ import { DashboardNotification, type DashboardNotificationState } from "@/compon
 import { DashboardKpiCards, type DetailModalType } from "@/components/DashboardKpiCards";
 import { VatFiscalSection } from "@/components/VatFiscalSection";
 import { DashboardDetailModal } from "@/components/DashboardDetailModal";
+import { ExpenseSection } from "@/components/ExpenseSection";
 import { syncAction } from "@/app/actions";
+import { LayoutDashboard, Receipt } from "lucide-react";
 
 interface DashboardClientProps {
   initialData: DashboardData;
@@ -23,6 +25,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   const [notification, setNotification] = useState<DashboardNotificationState | null>(null);
   const [activeModal, setActiveModal] = useState<DetailModalType>(null);
   const [selectedFiscalOffset, setSelectedFiscalOffset] = useState<0 | -1>(0);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "expenses">("dashboard");
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -81,40 +84,74 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           onDismiss={() => setNotification(null)}
         />
 
-        {/* Top KPIs Grid */}
-        <DashboardKpiCards
-          kpis={kpis}
-          onOpenModal={(modalType) => setActiveModal(modalType)}
-        />
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-border/80 pb-3">
+          <button
+            onClick={() => setActiveTab("dashboard")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === "dashboard"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Trésorerie & Prévisions
+          </button>
+          <button
+            onClick={() => setActiveTab("expenses")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === "expenses"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <Receipt className="w-4 h-4" />
+            Notes de Frais & IK
+          </button>
+        </div>
 
-        {/* Detailed Breakdown Card (TVA Details) */}
-        <VatFiscalSection
-          summary={currentVatSummary}
-          selectedFiscalOffset={selectedFiscalOffset}
-          onOffsetChange={setSelectedFiscalOffset}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenVatDetail={() => setActiveModal("vat")}
-        />
+        {activeTab === "dashboard" ? (
+          <>
+            {/* Top KPIs Grid */}
+            <DashboardKpiCards
+              kpis={kpis}
+              onOpenModal={(modalType) => setActiveModal(modalType)}
+            />
 
-        {/* Chart Section */}
-        <section>
-          <CashProjectionChart
-            timeframe30d={projectionChart.timeframe30d}
-            timeframe60d={projectionChart.timeframe60d}
-            timeframe90d={projectionChart.timeframe90d}
-            timeframe12m={projectionChart.timeframe12m}
-            past7d={projectionChart.past7d}
-            past14d={projectionChart.past14d}
-            past30d={projectionChart.past30d}
-            past90d={projectionChart.past90d}
-            currentCash={kpis.currentCash}
-          />
-        </section>
+            {/* Detailed Breakdown Card (TVA Details) */}
+            <VatFiscalSection
+              summary={currentVatSummary}
+              selectedFiscalOffset={selectedFiscalOffset}
+              onOffsetChange={setSelectedFiscalOffset}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenVatDetail={() => setActiveModal("vat")}
+            />
 
-        {/* Future Flows Management Section */}
-        <section>
-          <FutureFlowsSection flows={futureFlows} onDataUpdated={handleDataUpdated} />
-        </section>
+            {/* Chart Section */}
+            <section>
+              <CashProjectionChart
+                timeframe30d={projectionChart.timeframe30d}
+                timeframe60d={projectionChart.timeframe60d}
+                timeframe90d={projectionChart.timeframe90d}
+                timeframe12m={projectionChart.timeframe12m}
+                past7d={projectionChart.past7d}
+                past14d={projectionChart.past14d}
+                past30d={projectionChart.past30d}
+                past90d={projectionChart.past90d}
+                currentCash={kpis.currentCash}
+              />
+            </section>
+
+            {/* Future Flows Management Section */}
+            <section>
+              <FutureFlowsSection flows={futureFlows} onDataUpdated={handleDataUpdated} />
+            </section>
+          </>
+        ) : (
+          <section>
+            <ExpenseSection onDataUpdated={handleDataUpdated} />
+          </section>
+        )}
       </main>
 
       {/* Drill-down Modal (CA du mois, Charges du mois, TVA) */}

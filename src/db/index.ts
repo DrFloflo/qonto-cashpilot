@@ -95,6 +95,42 @@ sqlite.exec(`
     vat_payment_method TEXT NOT NULL DEFAULT 'debits',
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS collaborators (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT,
+    mileage_rate REAL NOT NULL DEFAULT 0.603,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS expense_items (
+    id TEXT PRIMARY KEY,
+    collaborator_id TEXT NOT NULL REFERENCES collaborators(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    date TEXT NOT NULL,
+    label TEXT NOT NULL,
+    amount_ttc REAL NOT NULL,
+    amount_ht REAL NOT NULL,
+    vat_rate REAL NOT NULL DEFAULT 0,
+    prorata_rate REAL NOT NULL DEFAULT 100,
+    vat_deductible REAL NOT NULL DEFAULT 0,
+    reimbursable_amount REAL NOT NULL,
+    distance_km REAL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS expense_reimbursements (
+    id TEXT PRIMARY KEY,
+    collaborator_id TEXT NOT NULL REFERENCES collaborators(id) ON DELETE CASCADE,
+    transaction_id TEXT REFERENCES transactions(id) ON DELETE SET NULL,
+    amount REAL NOT NULL,
+    date TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Ensure default settings exist

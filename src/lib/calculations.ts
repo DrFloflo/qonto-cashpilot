@@ -7,9 +7,13 @@ import {
   futureFlows,
   syncStates,
   appSettings,
+  collaborators,
+  expenseItems,
   type FutureFlow,
   type Transaction,
   type AppSettings,
+  type Collaborator,
+  type ExpenseItem,
 } from "@/db/schema";
 import { addDays, addMonths, isBefore, isAfter, parseISO, startOfMonth, endOfMonth, format } from "date-fns";
 
@@ -21,6 +25,7 @@ export interface VatItem {
     | "Facture Client (À encaisser)"
     | "Facture Fournisseur (À décaisser)"
     | "Dépense / Transaction"
+    | "Note de Frais"
     | "Flux Futur";
   label: string;
   date: string;
@@ -56,6 +61,13 @@ export interface VatFiscalSummary {
   vatToProvision: number;
   refundableVat: number;
   carriedOverVat: number;
+  revenueReal: number;
+  revenueFuture: number;
+  totalRevenue: number;
+  expensesReal: number;
+  expensesFuture: number;
+  totalExpenses: number;
+  netResult: number;
 }
 
 export interface VatYearData {
@@ -246,6 +258,9 @@ export async function getDashboardData(): Promise<DashboardData> {
   const allFutureFlows = db.select().from(futureFlows).all();
   const allSyncStates = db.select().from(syncStates).all();
   const allSettings = db.select().from(appSettings).all();
+  const allCollaborators = db.select().from(collaborators).all();
+  const allExpenseItems = db.select().from(expenseItems).all();
+  const collaboratorMap = new Map(allCollaborators.map((c) => [c.id, c.name]));
 
   const settings: AppSettings = allSettings[0] || {
     id: "default",
@@ -406,6 +421,27 @@ export async function getDashboardData(): Promise<DashboardData> {
       }
     }
 
+    // Deductible VAT from Expense Reports (NDF)
+    for (const exp of allExpenseItems) {
+      if (exp.type === "ndf" && exp.vatDeductible > 0) {
+        const expDate = exp.date.slice(0, 10);
+        if (expDate >= bounds.startDateStr && expDate <= bounds.endDateStr) {
+          dedReal += exp.vatDeductible;
+          const collabName = collaboratorMap.get(exp.collaboratorId) || "Collaborateur";
+          items.push({
+            id: exp.id,
+            source: "Note de Frais",
+            label: `${collabName} - ${exp.label}`,
+            date: expDate,
+            type: "deductible",
+            amountHt: exp.amountHt,
+            vatRate: exp.vatRate,
+            vatAmount: exp.vatDeductible,
+          });
+        }
+      }
+    }
+
     // Future VAT to collect & deduct (only relevant if bounds are in the future/current)
     let futToCollect = 0;
     let futToDeduct = 0;
@@ -489,6 +525,56 @@ export async function getDashboardData(): Promise<DashboardData> {
     const isSimp = settings.vatRegime === "simplified";
     const refThreshold = isSimp ? 150 : 760;
 
+    // Real Revenue (encaissements) & Real Expenses (décaissements) for the fiscal year
+    let revReal = 0;
+    let expReal = 0;
+    for (const tx of allTransactions) {
+      const txDate = tx.settledAt.slice(0, 10);
+      if (txDate >= bounds.startDateStr && txDate <= bounds.endDateStr) {
+        if (tx.side === "credit" || tx.amount > 0) {
+          revReal += Math.abs(tx.amount);
+        } else {
+          expReal += Math.abs(tx.amount);
+        }
+      }
+    }
+
+    // Future Revenue & Future Expenses for the fiscal year
+    let revFuture = 0;
+    let expFuture = 0;
+
+    for (const cinv of allCustomerInvoices) {
+      if (cinv.status !== "paid" && cinv.status !== "canceled") {
+        const dueDate = (cinv.dueDate || cinv.issueDate).slice(0, 10);
+        if (dueDate >= todayStr && dueDate >= bounds.startDateStr && dueDate <= bounds.endDateStr) {
+          revFuture += cinv.totalAmountTtc;
+        }
+      }
+    }
+
+    for (const sinv of allSupplierInvoices) {
+      if (sinv.status !== "paid" && sinv.status !== "canceled") {
+        const dueDate = (sinv.dueDate || sinv.issueDate).slice(0, 10);
+        if (dueDate >= todayStr && dueDate >= bounds.startDateStr && dueDate <= bounds.endDateStr) {
+          expFuture += sinv.totalAmountTtc;
+        }
+      }
+    }
+
+    for (const flow of manualExpanded) {
+      if (flow.date >= todayStr && flow.date >= bounds.startDateStr && flow.date <= bounds.endDateStr) {
+        if (flow.type === "inflow") {
+          revFuture += flow.amountTtc;
+        } else {
+          expFuture += flow.amountTtc;
+        }
+      }
+    }
+
+    const totRevenue = Math.round((revReal + revFuture) * 100) / 100;
+    const totExpenses = Math.round((expReal + expFuture) * 100) / 100;
+    const netRes = Math.round((totRevenue - totExpenses) * 100) / 100;
+
     let vStatus: "due" | "credit_refundable" | "credit_carried_over";
     let sLabel: string;
     let vToProv = 0;
@@ -530,6 +616,13 @@ export async function getDashboardData(): Promise<DashboardData> {
       vatToProvision: Math.round(vToProv * 100) / 100,
       refundableVat: Math.round(refVat * 100) / 100,
       carriedOverVat: Math.round(carVat * 100) / 100,
+      revenueReal: Math.round(revReal * 100) / 100,
+      revenueFuture: Math.round(revFuture * 100) / 100,
+      totalRevenue: totRevenue,
+      expensesReal: Math.round(expReal * 100) / 100,
+      expensesFuture: Math.round(expFuture * 100) / 100,
+      totalExpenses: totExpenses,
+      netResult: netRes,
     };
 
     return {

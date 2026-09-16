@@ -3,7 +3,7 @@
 import React from "react";
 import { formatCurrency } from "@/lib/utils";
 import type { VatFiscalSummary } from "@/lib/calculations";
-import { Receipt, Settings } from "lucide-react";
+import { Receipt, Settings, TrendingUp, TrendingDown, Scale } from "lucide-react";
 
 interface VatFiscalSectionProps {
   summary: VatFiscalSummary | undefined;
@@ -122,6 +122,94 @@ export function VatFiscalSection({
               : summary?.status === "credit_refundable"
               ? `Seuil légal ≥ ${summary.threshold} € atteint`
               : "À déclarer et payer"}
+          </div>
+        </div>
+      </div>
+
+      {/* Encarts Activité : CA et Charges de l'année en cours / exercice */}
+      <div className="mt-4 pt-3 border-t border-border/60">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wider">
+            <Scale className="w-3.5 h-3.5 text-muted-foreground" />
+            <span>Activité {selectedFiscalOffset === 0 ? "de l'Exercice en cours" : "de l'Exercice N-1"}</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground">
+            {summary?.fiscalYear.startDateStr} au {summary?.fiscalYear.endDateStr}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          {/* Encart CA de l'année en cours */}
+          <div className="p-2.5 rounded-lg bg-background border border-border/60">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-[11px]">
+                Chiffre d&apos;Affaires ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
+              </span>
+              <div className="p-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <TrendingUp className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
+              +{formatCurrency(summary?.totalRevenue ?? 0)}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
+              <span>Réel : {formatCurrency(summary?.revenueReal ?? 0)}</span>
+              {selectedFiscalOffset === 0 && (
+                <span>Prévi : +{formatCurrency(summary?.revenueFuture ?? 0)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Encart Charges de l'année en cours */}
+          <div className="p-2.5 rounded-lg bg-background border border-border/60">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-[11px]">
+                Total des Charges ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
+              </span>
+              <div className="p-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <TrendingDown className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-1">
+              -{formatCurrency(summary?.totalExpenses ?? 0)}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
+              <span>Réel : {formatCurrency(summary?.expensesReal ?? 0)}</span>
+              {selectedFiscalOffset === 0 && (
+                <span>Prévi : -{formatCurrency(summary?.expensesFuture ?? 0)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Encart Résultat Net Estimé */}
+          <div className="p-2.5 rounded-lg bg-background border border-border/60">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-[11px]">Résultat Estimé (CA - Charges)</span>
+              <span
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                  (summary?.netResult ?? 0) >= 0
+                    ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                    : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
+                }`}
+              >
+                {(summary?.netResult ?? 0) >= 0 ? "Bénéfice" : "Déficit"}
+              </span>
+            </div>
+            <div
+              className={`text-sm font-semibold mt-1 ${
+                (summary?.netResult ?? 0) >= 0
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-rose-600 dark:text-rose-400"
+              }`}
+            >
+              {(summary?.netResult ?? 0) >= 0 ? "+" : ""}
+              {formatCurrency(summary?.netResult ?? 0)}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {summary?.totalRevenue && summary.totalRevenue > 0
+                ? `Marge nette : ${Math.round(((summary.netResult ?? 0) / summary.totalRevenue) * 100)}% du CA`
+                : "Solde net estimé"}
+            </div>
           </div>
         </div>
       </div>

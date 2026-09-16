@@ -101,6 +101,62 @@ export const appSettings = sqliteTable("app_settings", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * Collaborator - Employees/Directors claiming expense reports or mileage allowances
+ */
+export const collaborators = sqliteTable("collaborators", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email"),
+  mileageRate: real("mileage_rate").notNull().default(0.603), // € / km
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+});
+
+/**
+ * ExpenseItem - Expense reports (NDF) and mileage allowances (IK)
+ */
+export const expenseItems = sqliteTable("expense_items", {
+  id: text("id").primaryKey(),
+  collaboratorId: text("collaborator_id")
+    .notNull()
+    .references(() => collaborators.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "ndf" | "ik"
+  date: text("date").notNull(), // YYYY-MM-DD
+  label: text("label").notNull(),
+
+  // Financial values
+  amountTtc: real("amount_ttc").notNull(),
+  amountHt: real("amount_ht").notNull(),
+  vatRate: real("vat_rate").notNull().default(0), // e.g. 20, 10, 5.5, 0
+  prorataRate: real("prorata_rate").notNull().default(100), // % pro (e.g. 50, 100)
+
+  // Calculated values stored
+  vatDeductible: real("vat_deductible").notNull().default(0),
+  reimbursableAmount: real("reimbursable_amount").notNull(), // TTC engagé au prorata
+
+  // IK specific
+  distanceKm: real("distance_km"),
+
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * ExpenseReimbursement - Bank transfers or payments sent to reimburse a collaborator
+ */
+export const expenseReimbursements = sqliteTable("expense_reimbursements", {
+  id: text("id").primaryKey(),
+  collaboratorId: text("collaborator_id")
+    .notNull()
+    .references(() => collaborators.id, { onDelete: "cascade" }),
+  transactionId: text("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  amount: real("amount").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD
+  note: text("note"),
+  createdAt: text("created_at").notNull(),
+});
+
 export type Account = typeof accounts.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type CustomerInvoice = typeof customerInvoices.$inferSelect;
@@ -109,3 +165,9 @@ export type FutureFlow = typeof futureFlows.$inferSelect;
 export type NewFutureFlow = typeof futureFlows.$inferInsert;
 export type SyncState = typeof syncStates.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
+export type Collaborator = typeof collaborators.$inferSelect;
+export type NewCollaborator = typeof collaborators.$inferInsert;
+export type ExpenseItem = typeof expenseItems.$inferSelect;
+export type NewExpenseItem = typeof expenseItems.$inferInsert;
+export type ExpenseReimbursement = typeof expenseReimbursements.$inferSelect;
+export type NewExpenseReimbursement = typeof expenseReimbursements.$inferInsert;
