@@ -17,6 +17,13 @@ Application web locale moderne, sobre et minimaliste permettant de piloter la tr
   - Granularité journalière continue sur tous les horizons pour garantir qu'aucune opération future ne soit masquée.
   - Drill-down interactif : clic sur un point du graphique présentant des entrées ou sorties pour ouvrir le détail de toutes les opérations de la journée.
 - **Gestion des flux futurs (CRUD)** : Ajout, modification, suppression instantanée de flux manuels avec calcul automatique en temps réel du TTC et de la TVA, gestion des récurrences (ponctuel, mensuel, trimestriel, annuel).
+- **Détection automatique des flux récurrents** : Analyse des transactions des deux derniers mois et création d'un flux futur mensuel lorsqu'au moins deux opérations présentent le même montant, le même fournisseur et un intervalle approximatif de 30 jours (entre 25 et 35 jours).
+  - La détection est exécutée lors d'une synchronisation Qonto et au chargement du tableau de bord, ce qui permet également d'analyser l'historique déjà enregistré.
+  - La prochaine occurrence est calculée un mois après la transaction correspondante la plus récente.
+  - Les flux détectés portent le badge **Ajout automatique** afin de les distinguer des flux saisis manuellement.
+  - Chaque flux peut être activé ou désactivé. Un flux désactivé reste visible, conserve la préférence de l'utilisateur après une nouvelle détection et n'est plus inclus dans les projections de trésorerie ni dans les calculs de TVA.
+  - Les détections devenues obsolètes sont retirées automatiquement lorsqu'elles ne correspondent plus à deux opérations éligibles dans la fenêtre glissante des deux derniers mois.
+  - La suppression directe d'un flux automatique n'est pas persistante tant que ses transactions sources restent éligibles : il sera recréé lors de l'analyse suivante. Utilisez donc la désactivation pour l'exclure durablement des prévisions.
 - **Synchronisation automatique et paginée Qonto** : Récupération idempotente et paginée (gestion multi-pages au-delà des 100 transactions par défaut) du solde, des transactions, des factures clients et des factures fournisseurs via l'API Qonto v2.
 - **Base de données embarquée** : SQLite local avec Drizzle ORM (`./data/previ.db`), sans aucun serveur de base de données externe à installer.
 
@@ -48,3 +55,19 @@ npm run dev
 ```
 
 Rendez-vous sur [http://localhost:3000](http://localhost:3000) et cliquez sur **Synchroniser Qonto**.
+
+## 🔁 Fonctionnement de la détection des récurrences
+
+Une transaction est considérée comme mensuellement récurrente lorsque les conditions suivantes sont réunies :
+
+1. les deux opérations appartiennent aux **deux derniers mois** ;
+2. elles ont le **même sens** — entrée ou sortie ;
+3. leur montant est strictement identique au centime près ;
+4. leur fournisseur ou contrepartie normalisé est identique ;
+5. leur date est espacée de **25 à 35 jours**.
+
+Pour identifier la contrepartie, l'application utilise en priorité le nom nettoyé fourni par Qonto (`clean_counterparty_name`), puis le libellé bancaire si ce champ n'est pas disponible. Les différences de casse, d'accents et de ponctuation sont neutralisées pendant la comparaison.
+
+Le montant TTC de la transaction est décomposé à partir de la TVA communiquée par Qonto afin d'enregistrer le montant HT et le taux de TVA du flux prévisionnel. Si aucune TVA n'est disponible, le flux est créé avec un taux de 0 %.
+
+> **Conseil :** pour ignorer une récurrence détectée automatiquement, désactivez-la avec l'interrupteur **Actif**. La suppression seule ne constitue pas un rejet, car le même motif peut être détecté de nouveau tant que les transactions correspondantes restent dans la fenêtre d'analyse.
