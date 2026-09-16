@@ -18,6 +18,7 @@ import { calculateMonthlyTransactions } from "./calculations/monthly";
 import { calculateProjectedCash, generateProjectionTimeframes } from "./calculations/projection";
 import type { DashboardData, VatYearData } from "./calculations/types";
 import { computeVatForFiscalYear } from "./calculations/vat";
+import { syncAutomaticRecurringFlows } from "./recurring-transactions";
 
 export { getFiscalYearBounds } from "./calculations/fiscal-year";
 export type {
@@ -41,6 +42,10 @@ const DEFAULT_SETTINGS = (): AppSettings => ({
 });
 
 export async function getDashboardData(): Promise<DashboardData> {
+  // Also run detection when loading the dashboard so existing transaction
+  // history is converted without requiring a new Qonto synchronization.
+  syncAutomaticRecurringFlows();
+
   const allAccounts = db.select().from(accounts).all();
   const allTransactions = db.select().from(transactions).all();
   const allCustomerInvoices = db.select().from(customerInvoices).all();
@@ -70,7 +75,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0];
   const monthly = calculateMonthlyTransactions(allTransactions, now);
-  const manualFlows = expandFutureFlows(allFutureFlows, addMonths(now, 12));
+  const activeFlows = allFutureFlows.filter((flow) => flow.enabled);
+  const manualFlows = expandFutureFlows(activeFlows, addMonths(now, 12));
   const vatInput = {
     now,
     todayStr,
@@ -87,7 +93,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     allCustomerInvoices,
     allSupplierInvoices,
     allExpenseItems,
-    allFutureFlows,
+    activeFlows,
   );
   const oldestFiscalOffset = getOldestFiscalOffset(
     now,

@@ -145,6 +145,9 @@ function groupTransactionsByDate(transactions: Transaction[]): Record<string, Tr
       amount,
       type: isCredit ? "inflow" : "outflow",
       source: "qonto_transaction",
+      date: transaction.settledAt,
+      vatAmount: transaction.vatAmount ?? undefined,
+      operationType: transaction.operationType ?? undefined,
     });
   }
 
@@ -159,12 +162,18 @@ function groupFutureEventsByDate(events: ExpandedFlow[]): Record<string, FutureD
     if (event.type === "inflow") day.inflow += event.amountTtc;
     else day.outflow += event.amountTtc;
     day.operations.push({
-      id: `future-${event.date}-${event.label}`,
+      id: event.id,
       label: event.label,
       category: event.category,
       amount: event.amountTtc,
       type: event.type,
       source: event.source,
+      date: event.date,
+      amountHt: event.amountHt,
+      vatAmount: event.vatAmount,
+      status: event.status,
+      issueDate: event.issueDate,
+      dueDate: event.dueDate,
     });
   }
 

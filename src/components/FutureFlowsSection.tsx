@@ -8,6 +8,7 @@ import {
   createFutureFlowAction,
   updateFutureFlowAction,
   deleteFutureFlowAction,
+  toggleFutureFlowAction,
 } from "@/app/actions";
 import {
   Plus,
@@ -18,6 +19,7 @@ import {
   Repeat,
   X,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 
 const CATEGORIES_INFLOW = ["CA / Vente", "Autre entrée"];
@@ -48,6 +50,7 @@ export function FutureFlowsSection({ flows, onDataUpdated }: FutureFlowsSectionP
   const [editingFlow, setEditingFlow] = useState<FutureFlow | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Form State
   const [type, setType] = useState<"inflow" | "outflow">("outflow");
@@ -152,6 +155,18 @@ export function FutureFlowsSection({ flows, onDataUpdated }: FutureFlowsSectionP
     }
   };
 
+  const handleToggle = async (flow: FutureFlow) => {
+    setTogglingId(flow.id);
+    try {
+      const res = await toggleFutureFlowAction(flow.id, !flow.enabled);
+      if (res.updatedData && onDataUpdated) {
+        onDataUpdated(res.updatedData);
+      }
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b border-border/60 gap-4">
@@ -160,7 +175,7 @@ export function FutureFlowsSection({ flows, onDataUpdated }: FutureFlowsSectionP
             Flux Futurs & Prévisionnels
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Dépenses ou encaissements manuels intégrés dynamiquement dans vos calculs de prévision
+            Flux manuels et récurrences détectées automatiquement à partir de deux opérations mensuelles identiques
           </p>
         </div>
         <button
@@ -186,12 +201,14 @@ export function FutureFlowsSection({ flows, onDataUpdated }: FutureFlowsSectionP
               <tr>
                 <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-4">Libellé</th>
+                <th className="py-3 px-4">Origine</th>
                 <th className="py-3 px-4">Catégorie</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4 text-right">Montant HT</th>
                 <th className="py-3 px-4 text-right">TVA</th>
                 <th className="py-3 px-4 text-right">TTC</th>
                 <th className="py-3 px-4">Récurrence</th>
+                <th className="py-3 px-4">Actif</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -200,14 +217,25 @@ export function FutureFlowsSection({ flows, onDataUpdated }: FutureFlowsSectionP
                 const vat = (flow.amountHt * flow.vatRate) / 100;
                 const ttc = flow.amountHt + vat;
                 const isInflow = flow.type === "inflow";
+                const isAutomatic = flow.origin === "automatic";
 
                 return (
-                  <tr key={flow.id} className="hover:bg-muted/20 transition-colors">
+                  <tr key={flow.id} className={`hover:bg-muted/20 transition-colors ${!flow.enabled ? "opacity-55" : ""}`}>
                     <td className="py-3.5 px-4 whitespace-nowrap font-medium text-foreground">
                       {formatDate(flow.date)}
                     </td>
                     <td className="py-3.5 px-4 font-medium text-foreground max-w-[200px] truncate">
                       {flow.label}
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      {isAutomatic ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300">
+                          <Sparkles className="h-3 w-3" />
+                          Ajout automatique
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">Manuel</span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">
@@ -256,15 +284,37 @@ export function FutureFlowsSection({ flows, onDataUpdated }: FutureFlowsSectionP
                         <span className="text-muted-foreground text-[11px]">Ponctuel</span>
                       )}
                     </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={flow.enabled}
+                        aria-label={`${flow.enabled ? "Désactiver" : "Activer"} le flux ${flow.label}`}
+                        title={flow.enabled ? "Désactiver" : "Activer"}
+                        disabled={togglingId === flow.id}
+                        onClick={() => handleToggle(flow)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-50 ${
+                          flow.enabled ? "bg-emerald-500" : "bg-muted-foreground/30"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                            flow.enabled ? "translate-x-4.5" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </td>
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEditModal(flow)}
-                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                          title="Modifier"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        {!isAutomatic && (
+                          <button
+                            onClick={() => openEditModal(flow)}
+                            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                            title="Modifier"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(flow.id)}
                           disabled={deletingId === flow.id}

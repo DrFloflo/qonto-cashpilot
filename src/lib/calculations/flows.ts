@@ -1,5 +1,5 @@
 import type { CustomerInvoice, FutureFlow, SupplierInvoice } from "@/db/schema";
-import { addMonths, isAfter, parseISO } from "date-fns";
+import { addDays, addMonths, isAfter, parseISO } from "date-fns";
 import type { ExpandedFlow } from "./types";
 
 const MAX_RECURRING_OCCURRENCES = 52;
@@ -11,6 +11,7 @@ export function expandFutureFlows(flows: FutureFlow[], horizonDate: Date): Expan
     const amountHt = flow.amountHt;
     const vatAmount = (amountHt * flow.vatRate) / 100;
     const baseFlow = {
+      id: flow.id,
       type: flow.type as ExpandedFlow["type"],
       amountHt,
       vatAmount,
@@ -30,6 +31,7 @@ export function expandFutureFlows(flows: FutureFlow[], horizonDate: Date): Expan
     while (!isAfter(currentDate, horizonDate) && occurrences < MAX_RECURRING_OCCURRENCES) {
       expanded.push({
         ...baseFlow,
+        id: `${flow.id}-${occurrences}`,
         date: currentDate.toISOString().split("T")[0],
         label: `${flow.label}${occurrences > 0 ? " (récurrent)" : ""}`,
       });
@@ -51,12 +53,14 @@ export function buildFutureEvents(
   todayStr: string,
 ): ExpandedFlow[] {
   const events = [...manualExpanded];
+  const overdueInvoiceDate = addDays(parseISO(todayStr), 14).toISOString().split("T")[0];
 
   for (const invoice of customerInvoiceRows) {
     if (isOutstanding(invoice.status)) {
       const dueDate = invoice.dueDate || todayStr;
       events.push({
-        date: dueDate < todayStr ? todayStr : dueDate,
+        id: invoice.id,
+        date: dueDate < todayStr ? overdueInvoiceDate : dueDate,
         type: "inflow",
         amountHt: invoice.totalAmountHt,
         vatAmount: invoice.totalVatAmount,
@@ -64,6 +68,9 @@ export function buildFutureEvents(
         label: `Facture client: ${invoice.clientName} (${invoice.invoiceNumber})`,
         category: "CA / Vente",
         source: "invoice_customer",
+        status: invoice.status,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate ?? undefined,
       });
     }
   }
@@ -72,7 +79,8 @@ export function buildFutureEvents(
     if (isOutstanding(invoice.status)) {
       const dueDate = invoice.dueDate || todayStr;
       events.push({
-        date: dueDate < todayStr ? todayStr : dueDate,
+        id: invoice.id,
+        date: dueDate < todayStr ? overdueInvoiceDate : dueDate,
         type: "outflow",
         amountHt: invoice.totalAmountHt,
         vatAmount: invoice.totalVatAmount,
@@ -80,6 +88,9 @@ export function buildFutureEvents(
         label: `Facture fournisseur: ${invoice.supplierName} (${invoice.invoiceNumber || "N/A"})`,
         category: "Fournisseur",
         source: "invoice_supplier",
+        status: invoice.status,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate ?? undefined,
       });
     }
   }

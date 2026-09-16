@@ -11,9 +11,9 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { formatCurrency } from "@/lib/utils";
-import type { ChartPoint} from "@/lib/calculations";
-import { X, ArrowUpRight, ArrowDownRight, Calendar } from "lucide-react";
+import { formatCurrency, formatDate } from "@/lib/utils";
+import type { ChartDayOperation, ChartPoint } from "@/lib/calculations";
+import { X, ArrowUpRight, ArrowDownRight, Calendar, ChevronRight, ArrowLeft } from "lucide-react";
 
 interface CashChartProps {
   timeframe30d: ChartPoint[];
@@ -41,6 +41,7 @@ export function CashProjectionChart({
   const [activeTab, setActiveTab] = useState<"30d" | "60d" | "90d" | "12m">("60d");
   const [activePastTab, setActivePastTab] = useState<"7d" | "14d" | "30d" | "90d">("30d");
   const [selectedPoint, setSelectedPoint] = useState<ChartPoint | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState<ChartDayOperation | null>(null);
 
   const pastMap: Record<"7d" | "14d" | "30d" | "90d", { timeframe30d: ChartPoint[]; timeframe60d: ChartPoint[]; timeframe90d: ChartPoint[]; timeframe12m: ChartPoint[] } | undefined> = {
     "7d": past7d,
@@ -318,7 +319,10 @@ export function CashProjectionChart({
                 </div>
               </div>
               <button
-                onClick={() => setSelectedPoint(null)}
+                onClick={() => {
+                  setSelectedOperation(null);
+                  setSelectedPoint(null);
+                }}
                 className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -326,7 +330,9 @@ export function CashProjectionChart({
             </div>
 
             <div className="p-5 overflow-y-auto flex-1 divide-y divide-border/60">
-              {selectedPoint.operations && selectedPoint.operations.length > 0 ? (
+              {selectedOperation ? (
+                <OperationDetail operation={selectedOperation} onBack={() => setSelectedOperation(null)} />
+              ) : selectedPoint.operations && selectedPoint.operations.length > 0 ? (
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground">
@@ -338,7 +344,18 @@ export function CashProjectionChart({
                   </thead>
                   <tbody className="divide-y divide-border/40">
                     {selectedPoint.operations.map((op, idx) => (
-                      <tr key={`${op.id}-${idx}`} className="hover:bg-muted/30 transition-colors">
+                      <tr
+                        key={`${op.id}-${idx}`}
+                        onClick={() => setSelectedOperation(op)}
+                        className="hover:bg-muted/50 transition-colors cursor-pointer"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedOperation(op);
+                          }
+                        }}
+                      >
                         <td className="py-2.5 pr-2">
                           {op.type === "inflow" ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
@@ -374,8 +391,11 @@ export function CashProjectionChart({
                               : "text-rose-600 dark:text-rose-400"
                           }`}
                         >
-                          {op.type === "inflow" ? "+" : "-"}
-                          {formatCurrency(op.amount)}
+                          <span className="inline-flex items-center gap-1">
+                            {op.type === "inflow" ? "+" : "-"}
+                            {formatCurrency(op.amount)}
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -389,16 +409,94 @@ export function CashProjectionChart({
             </div>
 
             <div className="px-5 py-3 border-t border-border bg-muted/20 flex justify-end">
-              <button
-                onClick={() => setSelectedPoint(null)}
-                className="px-4 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
-              >
-                Fermer
-              </button>
+              {selectedOperation ? (
+                <button
+                  onClick={() => setSelectedOperation(null)}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-medium hover:bg-muted transition-colors cursor-pointer shadow-xs"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Retour à la liste
+                </button>
+              ) : (
+                <button
+                  onClick={() => setSelectedPoint(null)}
+                  className="px-4 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                >
+                  Fermer
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function OperationDetail({
+  operation,
+  onBack,
+}: {
+  operation: ChartDayOperation;
+  onBack: () => void;
+}) {
+  const sourceLabel = operation.source === "qonto_transaction"
+    ? "Transaction bancaire Qonto"
+    : operation.source === "invoice_customer"
+      ? "Facture client"
+      : operation.source === "invoice_supplier"
+        ? "Facture fournisseur"
+        : "Flux prévisionnel manuel";
+  const statusLabels: Record<string, string> = {
+    paid: "Payée",
+    unpaid: "Impayée",
+    pending: "En attente",
+    overdue: "En retard",
+    canceled: "Annulée",
+  };
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline cursor-pointer"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Retour aux opérations
+      </button>
+
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">{sourceLabel}</div>
+            <h4 className="mt-1 text-base font-semibold text-foreground">{operation.label}</h4>
+            <p className="mt-1 text-xs text-muted-foreground">Référence : {operation.id}</p>
+          </div>
+          <span className={`text-lg font-bold ${operation.type === "inflow" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            {operation.type === "inflow" ? "+" : "-"}{formatCurrency(operation.amount)}
+          </span>
+        </div>
+      </div>
+
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <DetailField label="Catégorie" value={operation.category} />
+        <DetailField label="Nature" value={operation.type === "inflow" ? "Entrée de trésorerie" : "Sortie de trésorerie"} />
+        {operation.date && <DetailField label="Date de l’opération" value={formatDate(operation.date)} />}
+        {operation.issueDate && <DetailField label="Date d’émission" value={formatDate(operation.issueDate)} />}
+        {operation.dueDate && <DetailField label="Date d’échéance initiale" value={formatDate(operation.dueDate)} />}
+        {operation.status && <DetailField label="Statut" value={statusLabels[operation.status] || operation.status} />}
+        {operation.operationType && <DetailField label="Type d’opération Qonto" value={operation.operationType} />}
+        {operation.amountHt !== undefined && <DetailField label="Montant HT" value={formatCurrency(operation.amountHt)} />}
+        {operation.vatAmount !== undefined && <DetailField label="TVA" value={formatCurrency(operation.vatAmount)} />}
+        <DetailField label="Montant TTC" value={formatCurrency(operation.amount)} />
+      </dl>
+    </div>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-background p-3">
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="mt-1 font-medium text-foreground break-words">{value}</dd>
     </div>
   );
 }

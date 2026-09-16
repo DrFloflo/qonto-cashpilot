@@ -76,6 +76,10 @@ sqlite.exec(`
     vat_rate REAL NOT NULL DEFAULT 20,
     date TEXT NOT NULL,
     recurrence TEXT NOT NULL DEFAULT 'none',
+    origin TEXT NOT NULL DEFAULT 'manual',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    detection_key TEXT,
+    source_transaction_ids TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -151,5 +155,26 @@ try {
 } catch {
   // column already exists
 }
+
+const futureFlowMigrations = [
+  `ALTER TABLE future_flows ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual';`,
+  `ALTER TABLE future_flows ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;`,
+  `ALTER TABLE future_flows ADD COLUMN detection_key TEXT;`,
+  `ALTER TABLE future_flows ADD COLUMN source_transaction_ids TEXT;`,
+];
+
+for (const migration of futureFlowMigrations) {
+  try {
+    sqlite.exec(migration);
+  } catch {
+    // column already exists
+  }
+}
+
+sqlite.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS future_flows_detection_key_unique
+  ON future_flows(detection_key)
+  WHERE detection_key IS NOT NULL;
+`);
 
 export const db = drizzle(sqlite, { schema });

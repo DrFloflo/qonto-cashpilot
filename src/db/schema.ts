@@ -64,7 +64,7 @@ export const supplierInvoices = sqliteTable("supplier_invoices", {
 });
 
 /**
- * FutureFlow - Manually added projected flows (one-off or recurring)
+ * FutureFlow - Projected flows, added manually or detected from transactions.
  */
 export const futureFlows = sqliteTable("future_flows", {
   id: text("id").primaryKey(),
@@ -75,6 +75,10 @@ export const futureFlows = sqliteTable("future_flows", {
   vatRate: real("vat_rate").notNull().default(20), // e.g. 0, 5.5, 10, 20
   date: text("date").notNull(), // YYYY-MM-DD
   recurrence: text("recurrence").notNull().default("none"), // "none" | "monthly" | "quarterly" | "yearly"
+  origin: text("origin").notNull().default("manual"), // "manual" | "automatic"
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  detectionKey: text("detection_key"), // Stable identity for an automatically detected recurrence
+  sourceTransactionIds: text("source_transaction_ids"), // JSON array of transactions supporting detection
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

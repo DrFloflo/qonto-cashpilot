@@ -67,6 +67,13 @@ export interface ChartDayOperation {
   amount: number;
   type: "inflow" | "outflow";
   source: "qonto_transaction" | "invoice_customer" | "invoice_supplier" | "future_flow";
+  date?: string;
+  amountHt?: number;
+  vatAmount?: number;
+  status?: string;
+  issueDate?: string;
+  dueDate?: string;
+  operationType?: string;
 }
 
 export interface ChartPoint {
@@ -81,6 +88,7 @@ export interface ChartPoint {
 }
 
 export interface ExpandedFlow {
+  id: string;
   date: string;
   type: "inflow" | "outflow";
   amountHt: number;
@@ -89,6 +97,9 @@ export interface ExpandedFlow {
   label: string;
   category: string;
   source: "invoice_customer" | "invoice_supplier" | "future_flow";
+  status?: string;
+  issueDate?: string;
+  dueDate?: string;
 }
 
 export interface VatDetails {

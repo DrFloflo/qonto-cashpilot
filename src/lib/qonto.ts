@@ -4,6 +4,7 @@
  */
 
 import { db } from "@/db";
+import { syncAutomaticRecurringFlows } from "@/lib/recurring-transactions";
 import {
   accounts,
   transactions,
@@ -208,6 +209,9 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
       console.warn("Could not fetch Qonto transactions:", (e as Error).message);
     }
 
+    // Detect recurring transactions after all transaction pages have been persisted.
+    const detectedRecurringFlowsCount = syncAutomaticRecurringFlows();
+
     // 3. Fetch customer invoices via /v2/client_invoices
     let fetchedClientInvoicesCount = 0;
     try {
@@ -372,11 +376,12 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
 
     return {
       success: true,
-      message: `Synchronisation réussie ! (${fetchedTransactionsCount} transaction(s), ${fetchedClientInvoicesCount} facture(s) client, ${fetchedSupplierInvoicesCount} facture(s) fournisseur)`,
+      message: `Synchronisation réussie ! (${fetchedTransactionsCount} transaction(s), ${fetchedClientInvoicesCount} facture(s) client, ${fetchedSupplierInvoicesCount} facture(s) fournisseur, ${detectedRecurringFlowsCount} récurrence(s) détectée(s))`,
       counts: {
         transactions: fetchedTransactionsCount,
         customerInvoices: fetchedClientInvoicesCount,
         supplierInvoices: fetchedSupplierInvoicesCount,
+        recurringFlows: detectedRecurringFlowsCount,
       },
     };
   } catch (error: unknown) {

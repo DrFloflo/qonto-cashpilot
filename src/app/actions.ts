@@ -74,6 +74,8 @@ export async function createFutureFlowAction(data: {
       vatRate: Number(data.vatRate),
       date: data.date,
       recurrence: data.recurrence,
+      origin: "manual",
+      enabled: true,
       createdAt: nowIso,
       updatedAt: nowIso,
     })
@@ -108,6 +110,20 @@ export async function updateFutureFlowAction(
       date: data.date,
       recurrence: data.recurrence,
       updatedAt: nowIso,
+    })
+    .where(eq(futureFlows.id, id))
+    .run();
+
+  const updatedData = await getDashboardData();
+  revalidatePath("/");
+  return { success: true, updatedData };
+}
+
+export async function toggleFutureFlowAction(id: string, enabled: boolean) {
+  db.update(futureFlows)
+    .set({
+      enabled: Boolean(enabled),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(futureFlows.id, id))
     .run();
