@@ -15,7 +15,13 @@ import { addDays, addMonths, isBefore, isAfter, parseISO, startOfMonth, endOfMon
 
 export interface VatItem {
   id: string;
-  source: "Facture Client (Encaissée)" | "Facture Fournisseur (Payée)" | "Facture Client (À encaisser)" | "Facture Fournisseur (À décaisser)" | "Flux Futur";
+  source:
+    | "Facture Client (Encaissée)"
+    | "Facture Fournisseur (Payée)"
+    | "Facture Client (À encaisser)"
+    | "Facture Fournisseur (À décaisser)"
+    | "Dépense / Transaction"
+    | "Flux Futur";
   label: string;
   date: string;
   type: "collectee" | "deductible";
@@ -52,6 +58,11 @@ export interface VatFiscalSummary {
   carriedOverVat: number;
 }
 
+export interface VatYearData {
+  vatFiscalSummary: VatFiscalSummary;
+  vatProvisionItems: VatItem[];
+}
+
 export interface DashboardData {
   account: {
     id: string;
@@ -76,6 +87,7 @@ export interface DashboardData {
     monthRevenue: number;
     monthExpenses: number;
     vatFiscalSummary: VatFiscalSummary;
+    vatPreviousFiscalSummary?: VatFiscalSummary;
     vatDetails: {
       collectedReal: number;
       deductibleReal: number;
@@ -86,6 +98,7 @@ export interface DashboardData {
     monthRevenueItems: Transaction[];
     monthExpenseItems: Transaction[];
     vatProvisionItems: VatItem[];
+    previousVatProvisionItems?: VatItem[];
   };
   projectionChart: {
     past7d?: { timeframe30d: ChartPoint[]; timeframe60d: ChartPoint[]; timeframe90d: ChartPoint[]; timeframe12m: ChartPoint[] };
@@ -187,7 +200,7 @@ function expandFutureFlows(flows: FutureFlow[], horizonDate: Date): ExpandedFlow
   return expanded;
 }
 
-export function getFiscalYearBounds(now: Date, endDay: number, endMonth: number): {
+export function getFiscalYearBounds(now: Date, endDay: number, endMonth: number, offsetYears: number = 0): {
   startDate: Date;
   endDate: Date;
   startDateStr: string;
@@ -205,6 +218,12 @@ export function getFiscalYearBounds(now: Date, endDay: number, endMonth: number)
     const nextYear = currentYear + 1;
     const nextLastDay = new Date(nextYear, endMonth, 0).getDate();
     endDate = new Date(nextYear, endMonth - 1, Math.min(safeDay, nextLastDay), 23, 59, 59, 999);
+  }
+
+  if (offsetYears !== 0) {
+    const targetEndYear = endDate.getFullYear() + offsetYears;
+    const targetLastDay = new Date(targetEndYear, endMonth, 0).getDate();
+    endDate = new Date(targetEndYear, endMonth - 1, Math.min(safeDay, targetLastDay), 23, 59, 59, 999);
   }
 
   const startYear = endDate.getFullYear() - 1;
@@ -281,210 +300,262 @@ export async function getDashboardData(): Promise<DashboardData> {
   monthRevenueItems.sort((a, b) => b.settledAt.localeCompare(a.settledAt));
   monthExpenseItems.sort((a, b) => b.settledAt.localeCompare(a.settledAt));
 
-  // 2. VAT Calculation & Details List on the current Fiscal Year
-  const fiscalBounds = getFiscalYearBounds(
-    now,
-    settings.fiscalYearEndDay,
-    settings.fiscalYearEndMonth
-  );
+  // 2. Expand Future Invoices + Future Manual Flows
+  const horizon12m = addMonths(now, 12);
+  const manualExpanded = expandFutureFlows(allFutureFlows, horizon12m);
 
+  // 3. VAT Calculation & Details List for a given fiscal year offset (0 = current, -1 = previous)
   const regimeLabels: Record<string, string> = {
     normal_monthly: "Régime Réel Normal (Mensuel)",
     normal_quarterly: "Régime Réel Normal (Trimestriel)",
     simplified: "Régime Réel Simplifié (RSI)",
   };
 
-  const fiscalYearInfo: FiscalYearInfo = {
-    endDay: settings.fiscalYearEndDay,
-    endMonth: settings.fiscalYearEndMonth,
-    startDateStr: fiscalBounds.startDateStr,
-    endDateStr: fiscalBounds.endDateStr,
-    label: `Exercice fiscal du ${format(fiscalBounds.startDate, "dd/MM/yyyy")} au ${format(fiscalBounds.endDate, "dd/MM/yyyy")}`,
-    regime: settings.vatRegime as "normal_monthly" | "normal_quarterly" | "simplified",
-    regimeLabel: regimeLabels[settings.vatRegime] || "Régime Réel Normal",
-    paymentMethod: settings.vatPaymentMethod as "debits" | "encaissements",
-  };
+  function computeVatForFiscalYear(offsetYears: number = 0): {
+    summary: VatFiscalSummary;
+    items: VatItem[];
+    details: {
+      collectedReal: number;
+      deductibleReal: number;
+      futureToCollect: number;
+      futureToDeduct: number;
+      futureForecastFlowsVat: number;
+    };
+  } {
+    const bounds = getFiscalYearBounds(
+      now,
+      settings.fiscalYearEndDay,
+      settings.fiscalYearEndMonth,
+      offsetYears
+    );
 
-  const vatProvisionItems: VatItem[] = [];
+    const fYearInfo: FiscalYearInfo = {
+      endDay: settings.fiscalYearEndDay,
+      endMonth: settings.fiscalYearEndMonth,
+      startDateStr: bounds.startDateStr,
+      endDateStr: bounds.endDateStr,
+      label: `Exercice fiscal du ${format(bounds.startDate, "dd/MM/yyyy")} au ${format(bounds.endDate, "dd/MM/yyyy")}`,
+      regime: settings.vatRegime as "normal_monthly" | "normal_quarterly" | "simplified",
+      regimeLabel: regimeLabels[settings.vatRegime] || "Régime Réel Normal",
+      paymentMethod: settings.vatPaymentMethod as "debits" | "encaissements",
+    };
 
-  // Real VAT collected (paid customer invoices in current fiscal year)
-  let collectedReal = 0;
-  for (const cinv of allCustomerInvoices) {
-    if (cinv.status === "paid") {
-      const itemDate = (cinv.paidAt || cinv.issueDate).slice(0, 10);
-      if (itemDate >= fiscalBounds.startDateStr && itemDate <= fiscalBounds.endDateStr) {
-        collectedReal += cinv.totalVatAmount;
-        if (cinv.totalVatAmount > 0) {
-          vatProvisionItems.push({
-            id: cinv.id,
-            source: "Facture Client (Encaissée)",
-            label: `${cinv.clientName} (${cinv.invoiceNumber})`,
-            date: itemDate,
-            type: "collectee",
-            amountHt: cinv.totalAmountHt,
-            vatAmount: cinv.totalVatAmount,
-          });
+    const items: VatItem[] = [];
+
+    // Real VAT collected (paid customer invoices in this fiscal year)
+    let colReal = 0;
+    for (const cinv of allCustomerInvoices) {
+      if (cinv.status === "paid") {
+        const itemDate = (cinv.paidAt || cinv.issueDate).slice(0, 10);
+        if (itemDate >= bounds.startDateStr && itemDate <= bounds.endDateStr) {
+          colReal += cinv.totalVatAmount;
+          if (cinv.totalVatAmount > 0) {
+            items.push({
+              id: cinv.id,
+              source: "Facture Client (Encaissée)",
+              label: `${cinv.clientName} (${cinv.invoiceNumber})`,
+              date: itemDate,
+              type: "collectee",
+              amountHt: cinv.totalAmountHt,
+              vatAmount: cinv.totalVatAmount,
+            });
+          }
         }
       }
     }
-  }
 
-  // Real VAT deductible (paid supplier invoices in current fiscal year)
-  let deductibleReal = 0;
-  for (const sinv of allSupplierInvoices) {
-    if (sinv.status === "paid") {
-      const itemDate = (sinv.paidAt || sinv.issueDate).slice(0, 10);
-      if (itemDate >= fiscalBounds.startDateStr && itemDate <= fiscalBounds.endDateStr) {
-        deductibleReal += sinv.totalVatAmount;
-        if (sinv.totalVatAmount > 0) {
-          vatProvisionItems.push({
-            id: sinv.id,
-            source: "Facture Fournisseur (Payée)",
-            label: `${sinv.supplierName} (${sinv.invoiceNumber || "N/A"})`,
-            date: itemDate,
+    // Real VAT deductible:
+    // 1. Paid supplier invoices in this fiscal year
+    let dedReal = 0;
+    for (const sinv of allSupplierInvoices) {
+      if (sinv.status === "paid") {
+        const itemDate = (sinv.paidAt || sinv.issueDate).slice(0, 10);
+        if (itemDate >= bounds.startDateStr && itemDate <= bounds.endDateStr) {
+          dedReal += sinv.totalVatAmount;
+          if (sinv.totalVatAmount > 0) {
+            items.push({
+              id: sinv.id,
+              source: "Facture Fournisseur (Payée)",
+              label: `${sinv.supplierName} (${sinv.invoiceNumber || "N/A"})`,
+              date: itemDate,
+              type: "deductible",
+              amountHt: sinv.totalAmountHt,
+              vatAmount: sinv.totalVatAmount,
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Debit transactions with vatAmount in this fiscal year
+    for (const tx of allTransactions) {
+      if (tx.side === "debit" && tx.vatAmount && tx.vatAmount > 0) {
+        const txDate = tx.settledAt.slice(0, 10);
+        if (txDate >= bounds.startDateStr && txDate <= bounds.endDateStr) {
+          dedReal += tx.vatAmount;
+          items.push({
+            id: tx.id,
+            source: "Dépense / Transaction",
+            label: tx.label,
+            date: txDate,
             type: "deductible",
-            amountHt: sinv.totalAmountHt,
-            vatAmount: sinv.totalVatAmount,
+            amountHt: Math.max(0, Math.abs(tx.amount) - tx.vatAmount),
+            vatAmount: tx.vatAmount,
           });
         }
       }
     }
-  }
 
-  // Future VAT to collect (unpaid customer invoices within remaining fiscal year)
-  let futureToCollect = 0;
-  for (const cinv of allCustomerInvoices) {
-    if (cinv.status !== "paid" && cinv.status !== "canceled") {
-      const dueDate = (cinv.dueDate || cinv.issueDate).slice(0, 10);
-      if (dueDate >= todayStr && dueDate <= fiscalBounds.endDateStr) {
-        futureToCollect += cinv.totalVatAmount;
-        if (cinv.totalVatAmount > 0) {
-          vatProvisionItems.push({
-            id: cinv.id,
-            source: "Facture Client (À encaisser)",
-            label: `${cinv.clientName} (${cinv.invoiceNumber})`,
-            date: dueDate,
-            type: "collectee",
-            amountHt: cinv.totalAmountHt,
-            vatAmount: cinv.totalVatAmount,
+    // Future VAT to collect & deduct (only relevant if bounds are in the future/current)
+    let futToCollect = 0;
+    let futToDeduct = 0;
+
+    for (const cinv of allCustomerInvoices) {
+      if (cinv.status !== "paid" && cinv.status !== "canceled") {
+        const dueDate = (cinv.dueDate || cinv.issueDate).slice(0, 10);
+        if (dueDate >= todayStr && dueDate >= bounds.startDateStr && dueDate <= bounds.endDateStr) {
+          futToCollect += cinv.totalVatAmount;
+          if (cinv.totalVatAmount > 0) {
+            items.push({
+              id: cinv.id,
+              source: "Facture Client (À encaisser)",
+              label: `${cinv.clientName} (${cinv.invoiceNumber})`,
+              date: dueDate,
+              type: "collectee",
+              amountHt: cinv.totalAmountHt,
+              vatAmount: cinv.totalVatAmount,
+            });
+          }
+        }
+      }
+    }
+
+    for (const sinv of allSupplierInvoices) {
+      if (sinv.status !== "paid" && sinv.status !== "canceled") {
+        const dueDate = (sinv.dueDate || sinv.issueDate).slice(0, 10);
+        if (dueDate >= todayStr && dueDate >= bounds.startDateStr && dueDate <= bounds.endDateStr) {
+          futToDeduct += sinv.totalVatAmount;
+          if (sinv.totalVatAmount > 0) {
+            items.push({
+              id: sinv.id,
+              source: "Facture Fournisseur (À décaisser)",
+              label: `${sinv.supplierName} (${sinv.invoiceNumber || "N/A"})`,
+              date: dueDate,
+              type: "deductible",
+              amountHt: sinv.totalAmountHt,
+              vatAmount: sinv.totalVatAmount,
+            });
+          }
+        }
+      }
+    }
+
+    let futForecastVat = 0;
+    for (const flow of manualExpanded) {
+      if (flow.date >= todayStr && flow.date >= bounds.startDateStr && flow.date <= bounds.endDateStr) {
+        if (flow.type === "inflow") {
+          futForecastVat += flow.vatAmount;
+        } else {
+          futForecastVat -= flow.vatAmount;
+        }
+        if (flow.vatAmount > 0) {
+          items.push({
+            id: `future-${flow.label}-${flow.date}`,
+            source: "Flux Futur",
+            label: flow.label,
+            date: flow.date,
+            type: flow.type === "inflow" ? "collectee" : "deductible",
+            amountHt: flow.amountHt,
+            vatAmount: flow.vatAmount,
           });
         }
       }
     }
-  }
 
-  // Future VAT to deduct (unpaid supplier invoices within remaining fiscal year)
-  let futureToDeduct = 0;
-  for (const sinv of allSupplierInvoices) {
-    if (sinv.status !== "paid" && sinv.status !== "canceled") {
-      const dueDate = (sinv.dueDate || sinv.issueDate).slice(0, 10);
-      if (dueDate >= todayStr && dueDate <= fiscalBounds.endDateStr) {
-        futureToDeduct += sinv.totalVatAmount;
-        if (sinv.totalVatAmount > 0) {
-          vatProvisionItems.push({
-            id: sinv.id,
-            source: "Facture Fournisseur (À décaisser)",
-            label: `${sinv.supplierName} (${sinv.invoiceNumber || "N/A"})`,
-            date: dueDate,
-            type: "deductible",
-            amountHt: sinv.totalAmountHt,
-            vatAmount: sinv.totalVatAmount,
-          });
-        }
-      }
-    }
-  }
+    items.sort((a, b) => b.date.localeCompare(a.date));
 
-  // 3. Expand Future Invoices + Future Manual Flows
-  const horizon12m = addMonths(now, 12);
-  const manualExpanded = expandFutureFlows(allFutureFlows, horizon12m);
+    const manInflowsVat = manualExpanded
+      .filter((f) => f.date >= todayStr && f.date >= bounds.startDateStr && f.date <= bounds.endDateStr && f.type === "inflow")
+      .reduce((a, b) => a + b.vatAmount, 0);
 
-  // Manual flows VAT within remaining fiscal year
-  let futureForecastFlowsVat = 0;
-  for (const flow of manualExpanded) {
-    if (flow.date >= todayStr && flow.date <= fiscalBounds.endDateStr) {
-      if (flow.type === "inflow") {
-        futureForecastFlowsVat += flow.vatAmount;
+    const manOutflowsVat = manualExpanded
+      .filter((f) => f.date >= todayStr && f.date >= bounds.startDateStr && f.date <= bounds.endDateStr && f.type === "outflow")
+      .reduce((a, b) => a + b.vatAmount, 0);
+
+    const totCollected = colReal + futToCollect + manInflowsVat;
+    const totDeductible = dedReal + futToDeduct + manOutflowsVat;
+    const rawBal = Math.round((totCollected - totDeductible) * 100) / 100;
+
+    const isSimp = settings.vatRegime === "simplified";
+    const refThreshold = isSimp ? 150 : 760;
+
+    let vStatus: "due" | "credit_refundable" | "credit_carried_over";
+    let sLabel: string;
+    let vToProv = 0;
+    let refVat = 0;
+    let carVat = 0;
+
+    if (rawBal > 0) {
+      vStatus = "due";
+      sLabel = "TVA nette à décaisser / provisionner";
+      vToProv = rawBal;
+    } else if (rawBal < 0) {
+      const credit = Math.abs(rawBal);
+      if (credit >= refThreshold) {
+        vStatus = "credit_refundable";
+        sLabel = `Crédit de TVA remboursable (≥ ${refThreshold} €)`;
+        refVat = credit;
       } else {
-        futureForecastFlowsVat -= flow.vatAmount;
+        vStatus = "credit_carried_over";
+        sLabel = `Crédit reporté (inférieur au seuil de ${refThreshold} €)`;
+        carVat = credit;
       }
-      if (flow.vatAmount > 0) {
-        vatProvisionItems.push({
-          id: `future-${flow.label}-${flow.date}`,
-          source: "Flux Futur",
-          label: flow.label,
-          date: flow.date,
-          type: flow.type === "inflow" ? "collectee" : "deductible",
-          amountHt: flow.amountHt,
-          vatAmount: flow.vatAmount,
-        });
-      }
-    }
-  }
-
-  // Sort VAT items by date descending
-  vatProvisionItems.sort((a, b) => b.date.localeCompare(a.date));
-
-  const manualInflowsVat = manualExpanded
-    .filter((f) => f.date >= todayStr && f.date <= fiscalBounds.endDateStr && f.type === "inflow")
-    .reduce((a, b) => a + b.vatAmount, 0);
-
-  const manualOutflowsVat = manualExpanded
-    .filter((f) => f.date >= todayStr && f.date <= fiscalBounds.endDateStr && f.type === "outflow")
-    .reduce((a, b) => a + b.vatAmount, 0);
-
-  const totalCollected = collectedReal + futureToCollect + manualInflowsVat;
-  const totalDeductible = deductibleReal + futureToDeduct + manualOutflowsVat;
-  const rawBalance = Math.round((totalCollected - totalDeductible) * 100) / 100;
-
-  // French tax rules on refund & carry-over thresholds
-  // Normal regime: 760 € minimum refund threshold; below 760 € -> carried over to next period
-  // Simplified regime: 150 € annual refund threshold on CA12
-  const isSimplified = settings.vatRegime === "simplified";
-  const refundThreshold = isSimplified ? 150 : 760;
-
-  let vatStatus: "due" | "credit_refundable" | "credit_carried_over";
-  let statusLabel: string;
-  let vatToProvision = 0;
-  let refundableVat = 0;
-  let carriedOverVat = 0;
-
-  if (rawBalance > 0) {
-    vatStatus = "due";
-    statusLabel = "TVA nette à décaisser / provisionner";
-    vatToProvision = rawBalance;
-  } else if (rawBalance < 0) {
-    const credit = Math.abs(rawBalance);
-    if (credit >= refundThreshold) {
-      vatStatus = "credit_refundable";
-      statusLabel = `Crédit de TVA remboursable (≥ ${refundThreshold} €)`;
-      refundableVat = credit;
     } else {
-      vatStatus = "credit_carried_over";
-      statusLabel = `Crédit reporté (inférieur au seuil de ${refundThreshold} €)`;
-      carriedOverVat = credit;
+      vStatus = "due";
+      sLabel = "TVA équilibrée (0,00 €)";
     }
-  } else {
-    vatStatus = "due";
-    statusLabel = "TVA équilibrée (0,00 €)";
+
+    const summary: VatFiscalSummary = {
+      fiscalYear: fYearInfo,
+      collectedReal: Math.round(colReal * 100) / 100,
+      collectedFuture: Math.round((futToCollect + manInflowsVat) * 100) / 100,
+      totalCollected: Math.round(totCollected * 100) / 100,
+      deductibleReal: Math.round(dedReal * 100) / 100,
+      deductibleFuture: Math.round((futToDeduct + manOutflowsVat) * 100) / 100,
+      totalDeductible: Math.round(totDeductible * 100) / 100,
+      rawBalance: rawBal,
+      status: vStatus,
+      statusLabel: sLabel,
+      threshold: refThreshold,
+      vatToProvision: Math.round(vToProv * 100) / 100,
+      refundableVat: Math.round(refVat * 100) / 100,
+      carriedOverVat: Math.round(carVat * 100) / 100,
+    };
+
+    return {
+      summary,
+      items,
+      details: {
+        collectedReal: Math.round(colReal * 100) / 100,
+        deductibleReal: Math.round(dedReal * 100) / 100,
+        futureToCollect: Math.round(futToCollect * 100) / 100,
+        futureToDeduct: Math.round(futToDeduct * 100) / 100,
+        futureForecastFlowsVat: Math.round(futForecastVat * 100) / 100,
+      },
+    };
   }
 
-  const vatFiscalSummary: VatFiscalSummary = {
-    fiscalYear: fiscalYearInfo,
-    collectedReal: Math.round(collectedReal * 100) / 100,
-    collectedFuture: Math.round((futureToCollect + manualInflowsVat) * 100) / 100,
-    totalCollected: Math.round(totalCollected * 100) / 100,
-    deductibleReal: Math.round(deductibleReal * 100) / 100,
-    deductibleFuture: Math.round((futureToDeduct + manualOutflowsVat) * 100) / 100,
-    totalDeductible: Math.round(totalDeductible * 100) / 100,
-    rawBalance,
-    status: vatStatus,
-    statusLabel,
-    threshold: refundThreshold,
-    vatToProvision: Math.round(vatToProvision * 100) / 100,
-    refundableVat: Math.round(refundableVat * 100) / 100,
-    carriedOverVat: Math.round(carriedOverVat * 100) / 100,
-  };
+  const currentVatData = computeVatForFiscalYear(0);
+  const previousVatData = computeVatForFiscalYear(-1);
+
+  const vatFiscalSummary = currentVatData.summary;
+  const vatProvisionItems = currentVatData.items;
+  const collectedReal = currentVatData.details.collectedReal;
+  const deductibleReal = currentVatData.details.deductibleReal;
+  const futureToCollect = currentVatData.details.futureToCollect;
+  const futureToDeduct = currentVatData.details.futureToDeduct;
+  const futureForecastFlowsVat = currentVatData.details.futureForecastFlowsVat;
+  const vatToProvision = vatFiscalSummary.vatToProvision;
 
   // 4. Combine all future cash flows for projection timeline
   const allFutureEvents: ExpandedFlow[] = [...manualExpanded];
@@ -713,6 +784,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       monthRevenue,
       monthExpenses,
       vatFiscalSummary,
+      vatPreviousFiscalSummary: previousVatData.summary,
       vatDetails: {
         collectedReal,
         deductibleReal,
@@ -723,6 +795,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       monthRevenueItems,
       monthExpenseItems,
       vatProvisionItems,
+      previousVatProvisionItems: previousVatData.items,
     },
     projectionChart: {
       past7d: {
