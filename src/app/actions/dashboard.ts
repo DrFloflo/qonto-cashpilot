@@ -6,7 +6,7 @@ import { getDashboardData } from "@/lib/calculations";
 import { syncQontoData } from "@/lib/qonto";
 import { revalidatePath } from "next/cache";
 
-export interface SettingsInput {
+interface SettingsInput {
   fiscalYearEndDay: number;
   fiscalYearEndMonth: number;
   vatRegime: "normal_monthly" | "normal_quarterly" | "simplified";

@@ -75,7 +75,7 @@ export async function importExpenseCsvAction(csvContent: string) {
         type,
         amountTtc: parseDecimal(row.montant_ttc || row.montant || ""),
         vatRate: parseDecimal(row.taux_tva || row.tva || "0"),
-        prorataRate: parseDecimal(row.prorata || "100", 100),
+        prorataRate: parseDecimal(row.prorata || "100") || 100,
         distanceKm: parseDecimal(row.km || ""),
       },
       collaborator.mileageRate || 0.603,

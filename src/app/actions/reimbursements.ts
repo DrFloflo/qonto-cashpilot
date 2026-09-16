@@ -5,7 +5,7 @@ import { expenseReimbursements } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-export interface ReimbursementInput {
+interface ReimbursementInput {
   collaboratorId: string;
   transactionId?: string | null;
   amount: number;

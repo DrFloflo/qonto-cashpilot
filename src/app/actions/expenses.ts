@@ -12,7 +12,7 @@ import { calculateExpenseAmounts } from "@/lib/expense-calculations";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-export interface ExpenseItemInput {
+interface ExpenseItemInput {
   collaboratorId: string;
   type: "ndf" | "ik";
   date: string;

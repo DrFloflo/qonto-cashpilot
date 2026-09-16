@@ -6,7 +6,7 @@ import { getDashboardData } from "@/lib/calculations";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-export interface FutureFlowInput {
+interface FutureFlowInput {
   label: string;
   type: "inflow" | "outflow";
   category: string;

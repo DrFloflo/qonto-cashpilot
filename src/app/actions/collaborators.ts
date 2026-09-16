@@ -5,7 +5,7 @@ import { collaborators } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-export interface CollaboratorInput {
+interface CollaboratorInput {
   name: string;
   email?: string;
   mileageRate?: number;
