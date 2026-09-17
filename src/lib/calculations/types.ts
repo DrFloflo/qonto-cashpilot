@@ -87,6 +87,27 @@ export interface ChartPoint {
   operations?: ChartDayOperation[];
 }
 
+export interface FiscalMonthPoint {
+  key: string;
+  label: string;
+  fullLabel: string;
+  startDate: string;
+  endDate: string;
+  inflow: number;
+  outflow: number;
+  endingBalance: number;
+  netFlow: number;
+  isCurrent: boolean;
+  isProjected: boolean;
+}
+
+export interface FiscalYearChartData {
+  label: string;
+  startDate: string;
+  endDate: string;
+  months: FiscalMonthPoint[];
+}
+
 export interface ExpandedFlow {
   id: string;
   date: string;
@@ -159,5 +180,9 @@ export interface DashboardData {
     past30d?: ProjectionTimeframes;
     past90d?: ProjectionTimeframes;
   };
+  fiscalYearCharts: Array<{
+    offset: number;
+    data: FiscalYearChartData;
+  }>;
   futureFlows: FutureFlow[];
 }

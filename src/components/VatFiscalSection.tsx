@@ -2,12 +2,14 @@
 
 import React from "react";
 import { formatCurrency } from "@/lib/utils";
-import type { VatFiscalSummary, VatYearData } from "@/lib/calculations";
+import type { FiscalYearChartData, VatFiscalSummary, VatYearData } from "@/lib/calculations";
+import { FiscalYearFlowChart } from "@/components/FiscalYearFlowChart";
 import { Receipt, Settings, TrendingUp, TrendingDown, Scale } from "lucide-react";
 
 interface VatFiscalSectionProps {
   summary: VatFiscalSummary | undefined;
   fiscalYears: VatYearData[];
+  chartData: FiscalYearChartData | undefined;
   selectedFiscalOffset: number;
   onOffsetChange: (offset: number) => void;
   onOpenSettings: () => void;
@@ -17,6 +19,7 @@ interface VatFiscalSectionProps {
 export function VatFiscalSection({
   summary,
   fiscalYears,
+  chartData,
   selectedFiscalOffset,
   onOffsetChange,
   onOpenSettings,
@@ -196,6 +199,12 @@ export function VatFiscalSection({
             </div>
           </div>
         </div>
+
+        {chartData && (
+          <div className="mt-4">
+            <FiscalYearFlowChart data={chartData} embedded />
+          </div>
+        )}
       </div>
     </section>
   );

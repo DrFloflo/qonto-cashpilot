@@ -54,13 +54,15 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
     setData(newData);
   };
 
-  const { account, syncState, kpis, projectionChart, futureFlows } = data;
+  const { account, syncState, kpis, projectionChart, fiscalYearCharts, futureFlows } = data;
 
   const selectedVatYear =
     kpis.vatFiscalYears.find((year) => year.offset === selectedFiscalOffset)
     ?? kpis.vatFiscalYears[0];
   const currentVatSummary = selectedVatYear?.vatFiscalSummary ?? kpis.vatFiscalSummary;
   const currentVatItems = selectedVatYear?.vatProvisionItems ?? kpis.vatProvisionItems;
+  const selectedFiscalChart = fiscalYearCharts.find((year) => year.offset === selectedFiscalOffset)?.data
+    ?? fiscalYearCharts[0]?.data;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -119,6 +121,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
             <VatFiscalSection
               summary={currentVatSummary}
               fiscalYears={kpis.vatFiscalYears}
+              chartData={selectedFiscalChart}
               selectedFiscalOffset={selectedFiscalOffset}
               onOffsetChange={setSelectedFiscalOffset}
               onOpenSettings={() => setIsSettingsOpen(true)}

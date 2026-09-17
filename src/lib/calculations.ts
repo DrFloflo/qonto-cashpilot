@@ -12,6 +12,7 @@ import {
   type AppSettings,
 } from "@/db/schema";
 import { addDays, addMonths } from "date-fns";
+import { buildFiscalYearChart } from "./calculations/fiscal-chart";
 import { getFiscalYearBounds } from "./calculations/fiscal-year";
 import { buildFutureEvents, expandFutureFlows } from "./calculations/flows";
 import { calculateMonthlyTransactions } from "./calculations/monthly";
@@ -26,6 +27,8 @@ export type {
   ChartPoint,
   DashboardData,
   ExpandedFlow,
+  FiscalMonthPoint,
+  FiscalYearChartData,
   FiscalYearInfo,
   VatFiscalSummary,
   VatItem,
@@ -76,7 +79,15 @@ export async function getDashboardData(): Promise<DashboardData> {
   const todayStr = now.toISOString().split("T")[0];
   const monthly = calculateMonthlyTransactions(allTransactions, now);
   const activeFlows = allFutureFlows.filter((flow) => flow.enabled);
-  const manualFlows = expandFutureFlows(activeFlows, addMonths(now, 12));
+  const fiscalYearBounds = getFiscalYearBounds(
+    now,
+    settings.fiscalYearEndDay,
+    settings.fiscalYearEndMonth,
+  );
+  const expansionHorizon = fiscalYearBounds.endDate > addMonths(now, 12)
+    ? fiscalYearBounds.endDate
+    : addMonths(now, 12);
+  const manualFlows = expandFutureFlows(activeFlows, expansionHorizon);
   const vatInput = {
     now,
     todayStr,
@@ -101,6 +112,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     oldestVatDate,
   );
   const vatFiscalYears: VatYearData[] = [];
+  const fiscalYearCharts: DashboardData["fiscalYearCharts"] = [];
   let openingVatCredit = 0;
 
   for (let offset = oldestFiscalOffset; offset <= 0; offset++) {
@@ -114,10 +126,28 @@ export async function getDashboardData(): Promise<DashboardData> {
       vatFiscalSummary: calculation.summary,
       vatProvisionItems: calculation.items,
     });
+    const bounds = getFiscalYearBounds(
+      now,
+      settings.fiscalYearEndDay,
+      settings.fiscalYearEndMonth,
+      offset,
+    );
+    fiscalYearCharts.push({
+      offset,
+      data: buildFiscalYearChart({
+        fiscalStart: bounds.startDate,
+        fiscalEnd: bounds.endDate,
+        todayStr,
+        currentCash: account.balance,
+        transactions: allTransactions,
+        futureEvents: [],
+      }),
+    });
     openingVatCredit = calculation.summary.carriedOverVat;
   }
 
   vatFiscalYears.reverse();
+  fiscalYearCharts.reverse();
   const currentVatYear = vatFiscalYears[0];
   const currentVat = computeVatForFiscalYear({
     ...vatInput,
@@ -186,6 +216,19 @@ export async function getDashboardData(): Promise<DashboardData> {
       past90d: projectionForPast(90),
       ...projectionForPast(30),
     },
+    fiscalYearCharts: fiscalYearCharts.map((chart) => chart.offset === 0
+      ? {
+          offset: 0,
+          data: buildFiscalYearChart({
+            fiscalStart: fiscalYearBounds.startDate,
+            fiscalEnd: fiscalYearBounds.endDate,
+            todayStr,
+            currentCash,
+            transactions: allTransactions,
+            futureEvents,
+          }),
+        }
+      : chart),
     futureFlows: allFutureFlows.sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
