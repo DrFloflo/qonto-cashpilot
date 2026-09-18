@@ -11,8 +11,9 @@ import { DashboardKpiCards, type DetailModalType } from "@/components/DashboardK
 import { VatFiscalSection } from "@/components/VatFiscalSection";
 import { DashboardDetailModal } from "@/components/DashboardDetailModal";
 import { ExpenseSection } from "@/components/ExpenseSection";
+import { FixedAssetsSection } from "@/components/FixedAssetsSection";
 import { syncAction } from "@/app/actions";
-import { LayoutDashboard, Receipt } from "lucide-react";
+import { Landmark, LayoutDashboard, Receipt } from "lucide-react";
 
 interface DashboardClientProps {
   initialData: DashboardData;
@@ -25,7 +26,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   const [notification, setNotification] = useState<DashboardNotificationState | null>(null);
   const [activeModal, setActiveModal] = useState<DetailModalType>(null);
   const [selectedFiscalOffset, setSelectedFiscalOffset] = useState(0);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "expenses">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "expenses" | "assets">("dashboard");
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -107,6 +108,17 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
             <Receipt className="w-4 h-4" />
             Notes de Frais & IK
           </button>
+          <button
+            onClick={() => setActiveTab("assets")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === "assets"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <Landmark className="w-4 h-4" />
+            Immobilisations & amortissements
+          </button>
         </div>
 
         {activeTab === "dashboard" ? (
@@ -148,9 +160,13 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
               <FutureFlowsSection flows={futureFlows} onDataUpdated={handleDataUpdated} />
             </section>
           </>
-        ) : (
+        ) : activeTab === "expenses" ? (
           <section>
             <ExpenseSection onDataUpdated={handleDataUpdated} />
+          </section>
+        ) : (
+          <section>
+            <FixedAssetsSection onDataUpdated={handleDataUpdated} />
           </section>
         )}
       </main>

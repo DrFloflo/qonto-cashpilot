@@ -3,6 +3,9 @@ import type {
   CustomerInvoice,
   ExpenseItem,
   ExpenseReimbursement,
+  FixedAsset,
+  FixedAssetDisposal,
+  FixedAssetSource,
   SupplierInvoice,
   Transaction,
 } from "@/db/schema";
@@ -34,6 +37,9 @@ interface VatCalculationInput {
   supplierInvoices: SupplierInvoice[];
   expenseItems: ExpenseItem[];
   reimbursements: ExpenseReimbursement[];
+  fixedAssets?: FixedAsset[];
+  fixedAssetDisposals?: FixedAssetDisposal[];
+  fixedAssetSources?: FixedAssetSource[];
   collaboratorNames: Map<string, string>;
   manualFlows: ExpandedFlow[];
   offsetYears?: number;
@@ -55,6 +61,9 @@ export function computeVatForFiscalYear({
   supplierInvoices,
   expenseItems,
   reimbursements,
+  fixedAssets = [],
+  fixedAssetDisposals = [],
+  fixedAssetSources = [],
   collaboratorNames,
   manualFlows,
   offsetYears = 0,
@@ -209,6 +218,9 @@ export function computeVatForFiscalYear({
     customerInvoices,
     supplierInvoices,
     expenseItems,
+    fixedAssets,
+    fixedAssetDisposals,
+    fixedAssetSources,
   );
   const revenueFuture = sumFlowCents(fiscalFutureFlows, "inflow", "amountHt") / 100;
   const expensesFuture = sumFlowCents(fiscalFutureFlows, "outflow", "amountHt") / 100;

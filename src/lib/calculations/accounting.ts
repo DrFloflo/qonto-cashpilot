@@ -2,9 +2,13 @@ import type {
   CustomerInvoice,
   ExpenseItem,
   ExpenseReimbursement,
+  FixedAsset,
+  FixedAssetDisposal,
+  FixedAssetSource,
   SupplierInvoice,
   Transaction,
 } from "@/db/schema";
+import { calculateDepreciationForPeriod } from "./depreciation";
 
 const EXCLUDED_DOCUMENT_STATUSES = new Set(["canceled", "cancelled", "draft", "declined", "rejected"]);
 
@@ -47,17 +51,29 @@ export function calculateAccountingActivity(
   customerInvoices: CustomerInvoice[],
   supplierInvoices: SupplierInvoice[],
   expenseItems: ExpenseItem[],
+  fixedAssets: FixedAsset[] = [],
+  fixedAssetDisposals: FixedAssetDisposal[] = [],
+  fixedAssetSources: FixedAssetSource[] = [],
 ): AccountingActivity {
   const revenueCents = customerInvoices
     .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period))
     .reduce((total, invoice) => total + toCents(invoice.totalAmountHt), 0);
+  const capitalizedSupplierInvoiceIds = new Set([
+    ...fixedAssets.map((asset) => asset.supplierInvoiceId),
+    ...fixedAssetSources.map((source) => source.supplierInvoiceId),
+  ].filter((id): id is string => Boolean(id)));
+  const capitalizedExpenseIds = new Set([
+    ...fixedAssets.map((asset) => asset.sourceExpenseItemId),
+    ...fixedAssetSources.map((source) => source.expenseItemId),
+  ].filter((id): id is string => Boolean(id)));
   const supplierExpenseCents = supplierInvoices
-    .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period))
+    .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period) && !capitalizedSupplierInvoiceIds.has(invoice.id))
     .reduce((total, invoice) => total + toCents(invoice.totalAmountHt), 0);
   const expenseReportCents = expenseItems
-    .filter((expense) => expense.accountingStatus !== "canceled" && isDateInPeriod(expense.date, period))
+    .filter((expense) => expense.accountingStatus !== "canceled" && isDateInPeriod(expense.date, period) && !capitalizedExpenseIds.has(expense.id))
     .reduce((total, expense) => total + toCents(getProfessionalExpenseHt(expense)), 0);
-  const expensesCents = supplierExpenseCents + expenseReportCents;
+  const depreciationCents = toCents(calculateDepreciationForPeriod(fixedAssets, fixedAssetDisposals, period));
+  const expensesCents = supplierExpenseCents + expenseReportCents + depreciationCents;
 
   return {
     revenueHt: fromCents(revenueCents),

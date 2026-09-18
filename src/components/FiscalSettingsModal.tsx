@@ -42,6 +42,9 @@ export function FiscalSettingsModal({
   const [vatPaymentMethod, setVatPaymentMethod] = useState<"debits" | "encaissements">(
     (settings.vatPaymentMethod as "debits" | "encaissements") || "debits"
   );
+  const [fixedAssetThreshold, setFixedAssetThreshold] = useState(
+    String((settings.fixedAssetThresholdCents ?? 50000) / 100),
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +61,7 @@ export function FiscalSettingsModal({
         fiscalYearEndMonth: Number(endMonth),
         vatRegime,
         vatPaymentMethod,
+        fixedAssetThresholdCents: Math.round((Number.parseFloat(fixedAssetThreshold.replace(",", ".")) || 500) * 100),
       });
 
       if (res.success && res.updatedData) {
@@ -229,6 +233,24 @@ export function FiscalSettingsModal({
                 <div className="text-[10px] text-muted-foreground font-normal mt-0.5">Prestations de services standard</div>
               </button>
             </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            <label className="text-xs font-semibold text-foreground uppercase tracking-wider block">
+              Seuil indicatif d’immobilisation HT
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={fixedAssetThreshold}
+                onChange={(e) => setFixedAssetThreshold(e.target.value)}
+                className="w-full h-9 px-3 pr-9 rounded-lg border border-border bg-background text-xs text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
+              />
+              <span className="absolute right-3 top-2 text-xs text-muted-foreground">€</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Une alerte non bloquante sera affichée sous ce montant.</p>
           </div>
 
           {/* Footer actions */}

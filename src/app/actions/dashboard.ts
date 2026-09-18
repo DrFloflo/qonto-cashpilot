@@ -1,4 +1,4 @@
-"use server";
+ "use server";
 
 import { db } from "@/db";
 import { appSettings } from "@/db/schema";
@@ -11,6 +11,7 @@ interface SettingsInput {
   fiscalYearEndMonth: number;
   vatRegime: "normal_monthly" | "normal_quarterly" | "simplified";
   vatPaymentMethod: "debits" | "encaissements";
+  fixedAssetThresholdCents?: number;
 }
 
 export async function fetchDashboardDataAction() {
@@ -24,6 +25,7 @@ export async function saveSettingsAction(data: SettingsInput) {
     fiscalYearEndMonth: data.fiscalYearEndMonth,
     vatRegime: data.vatRegime,
     vatPaymentMethod: data.vatPaymentMethod,
+    fixedAssetThresholdCents: data.fixedAssetThresholdCents ?? 50000,
     updatedAt: nowIso,
   };
 

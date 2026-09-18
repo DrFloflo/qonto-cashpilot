@@ -102,6 +102,7 @@ export const appSettings = sqliteTable("app_settings", {
   fiscalYearEndMonth: integer("fiscal_year_end_month").notNull().default(12),
   vatRegime: text("vat_regime").notNull().default("normal_monthly"), // "normal_monthly" | "normal_quarterly" | "simplified"
   vatPaymentMethod: text("vat_payment_method").notNull().default("debits"), // "debits" | "encaissements"
+  fixedAssetThresholdCents: integer("fixed_asset_threshold_cents").notNull().default(50000),
   updatedAt: text("updated_at").notNull(),
 });
 
@@ -165,6 +166,77 @@ export const expenseReimbursements = sqliteTable("expense_reimbursements", {
   createdAt: text("created_at").notNull(),
 });
 
+/**
+ * FixedAsset - Capital asset and the deterministic inputs of its depreciation plan.
+ * Monetary values are stored as integer cents to avoid floating-point drift.
+ */
+export const fixedAssets = sqliteTable("fixed_assets", {
+  id: text("id").primaryKey(),
+  assetNumber: text("asset_number").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  category: text("category").notNull(),
+  supplierName: text("supplier_name").notNull(),
+  purchaseDate: text("purchase_date").notNull(),
+  serviceDate: text("service_date").notNull(),
+  invoiceNumber: text("invoice_number"),
+  supplierInvoiceId: text("supplier_invoice_id").references(() => supplierInvoices.id, { onDelete: "set null" }),
+  documentUrl: text("document_url"),
+  sourceType: text("source_type").notNull().default("none"), // "none" | "transaction" | "expense_item"
+  sourceTransactionId: text("source_transaction_id").references(() => transactions.id, { onDelete: "restrict" }),
+  sourceExpenseItemId: text("source_expense_item_id").references(() => expenseItems.id, { onDelete: "restrict" }),
+  amountHtCents: integer("amount_ht_cents").notNull(),
+  vatAmountCents: integer("vat_amount_cents").notNull().default(0),
+  amountTtcCents: integer("amount_ttc_cents").notNull(),
+  vatRate: real("vat_rate").notNull().default(20),
+  vatDeductibleRate: real("vat_deductible_rate").notNull().default(100),
+  incidentalCostsCents: integer("incidental_costs_cents").notNull().default(0),
+  acquisitionCostCents: integer("acquisition_cost_cents").notNull(),
+  residualValueCents: integer("residual_value_cents").notNull().default(0),
+  depreciableBaseCents: integer("depreciable_base_cents").notNull(),
+  depreciationMethod: text("depreciation_method").notNull().default("straight_line"),
+  depreciationDurationMonths: integer("depreciation_duration_months").notNull(),
+  assetAccount: text("asset_account").notNull(),
+  depreciationAccount: text("depreciation_account").notNull(),
+  expenseAccount: text("expense_account").notNull(),
+  isOpeningBalance: integer("is_opening_balance", { mode: "boolean" }).notNull().default(false),
+  openingDate: text("opening_date"),
+  openingAccumulatedDepreciationCents: integer("opening_accumulated_depreciation_cents").notNull().default(0),
+  status: text("status").notNull().default("in_service"), // draft | in_service | disposed | scrapped | fully_depreciated
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** FixedAssetSource - One of several purchase documents attached to an asset. */
+export const fixedAssetSources = sqliteTable("fixed_asset_sources", {
+  id: text("id").primaryKey(),
+  fixedAssetId: text("fixed_asset_id").notNull().references(() => fixedAssets.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull(), // "transaction" | "expense_item" | "supplier_invoice"
+  transactionId: text("transaction_id").references(() => transactions.id, { onDelete: "restrict" }),
+  expenseItemId: text("expense_item_id").references(() => expenseItems.id, { onDelete: "restrict" }),
+  supplierInvoiceId: text("supplier_invoice_id").references(() => supplierInvoices.id, { onDelete: "restrict" }),
+  createdAt: text("created_at").notNull(),
+});
+
+/** FixedAssetDisposal - Optional sale or scrapping event for one asset. */
+export const fixedAssetDisposals = sqliteTable("fixed_asset_disposals", {
+  id: text("id").primaryKey(),
+  fixedAssetId: text("fixed_asset_id")
+    .notNull()
+    .unique()
+    .references(() => fixedAssets.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "sale" | "scrap"
+  disposalDate: text("disposal_date").notNull(),
+  saleAmountHtCents: integer("sale_amount_ht_cents").notNull().default(0),
+  saleVatAmountCents: integer("sale_vat_amount_cents").notNull().default(0),
+  saleAmountTtcCents: integer("sale_amount_ttc_cents").notNull().default(0),
+  customerInvoiceId: text("customer_invoice_id").references(() => customerInvoices.id, { onDelete: "set null" }),
+  transactionId: text("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export type Account = typeof accounts.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type CustomerInvoice = typeof customerInvoices.$inferSelect;
@@ -179,3 +251,9 @@ export type ExpenseItem = typeof expenseItems.$inferSelect;
 export type NewExpenseItem = typeof expenseItems.$inferInsert;
 export type ExpenseReimbursement = typeof expenseReimbursements.$inferSelect;
 export type NewExpenseReimbursement = typeof expenseReimbursements.$inferInsert;
+export type FixedAsset = typeof fixedAssets.$inferSelect;
+export type NewFixedAsset = typeof fixedAssets.$inferInsert;
+export type FixedAssetDisposal = typeof fixedAssetDisposals.$inferSelect;
+export type NewFixedAssetDisposal = typeof fixedAssetDisposals.$inferInsert;
+export type FixedAssetSource = typeof fixedAssetSources.$inferSelect;
+export type NewFixedAssetSource = typeof fixedAssetSources.$inferInsert;

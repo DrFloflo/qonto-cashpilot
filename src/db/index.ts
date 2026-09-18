@@ -97,6 +97,7 @@ sqlite.exec(`
     fiscal_year_end_month INTEGER NOT NULL DEFAULT 12,
     vat_regime TEXT NOT NULL DEFAULT 'normal_monthly',
     vat_payment_method TEXT NOT NULL DEFAULT 'debits',
+    fixed_asset_threshold_cents INTEGER NOT NULL DEFAULT 50000,
     updated_at TEXT NOT NULL
   );
 
@@ -138,6 +139,81 @@ sqlite.exec(`
     status TEXT NOT NULL DEFAULT 'settled',
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS fixed_assets (
+    id TEXT PRIMARY KEY,
+    asset_number TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL,
+    supplier_name TEXT NOT NULL,
+    purchase_date TEXT NOT NULL,
+    service_date TEXT NOT NULL,
+    invoice_number TEXT,
+    supplier_invoice_id TEXT REFERENCES supplier_invoices(id) ON DELETE SET NULL,
+    document_url TEXT,
+    source_type TEXT NOT NULL DEFAULT 'none',
+    source_transaction_id TEXT REFERENCES transactions(id) ON DELETE RESTRICT,
+    source_expense_item_id TEXT REFERENCES expense_items(id) ON DELETE RESTRICT,
+    amount_ht_cents INTEGER NOT NULL,
+    vat_amount_cents INTEGER NOT NULL DEFAULT 0,
+    amount_ttc_cents INTEGER NOT NULL,
+    vat_rate REAL NOT NULL DEFAULT 20,
+    vat_deductible_rate REAL NOT NULL DEFAULT 100,
+    incidental_costs_cents INTEGER NOT NULL DEFAULT 0,
+    acquisition_cost_cents INTEGER NOT NULL,
+    residual_value_cents INTEGER NOT NULL DEFAULT 0,
+    depreciable_base_cents INTEGER NOT NULL,
+    depreciation_method TEXT NOT NULL DEFAULT 'straight_line',
+    depreciation_duration_months INTEGER NOT NULL,
+    asset_account TEXT NOT NULL,
+    depreciation_account TEXT NOT NULL,
+    expense_account TEXT NOT NULL,
+    is_opening_balance INTEGER NOT NULL DEFAULT 0,
+    opening_date TEXT,
+    opening_accumulated_depreciation_cents INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'in_service',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (source_type IN ('none', 'transaction', 'expense_item')),
+    CHECK (
+      (source_type = 'none' AND source_transaction_id IS NULL AND source_expense_item_id IS NULL)
+      OR (source_type = 'transaction' AND source_transaction_id IS NOT NULL AND source_expense_item_id IS NULL)
+      OR (source_type = 'expense_item' AND source_transaction_id IS NULL AND source_expense_item_id IS NOT NULL)
+    )
+  );
+
+  CREATE TABLE IF NOT EXISTS fixed_asset_sources (
+    id TEXT PRIMARY KEY,
+    fixed_asset_id TEXT NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL,
+    transaction_id TEXT REFERENCES transactions(id) ON DELETE RESTRICT,
+    expense_item_id TEXT REFERENCES expense_items(id) ON DELETE RESTRICT,
+    supplier_invoice_id TEXT REFERENCES supplier_invoices(id) ON DELETE RESTRICT,
+    created_at TEXT NOT NULL,
+    CHECK (source_type IN ('transaction', 'expense_item', 'supplier_invoice')),
+    CHECK (
+      (source_type = 'transaction' AND transaction_id IS NOT NULL AND expense_item_id IS NULL AND supplier_invoice_id IS NULL)
+      OR (source_type = 'expense_item' AND transaction_id IS NULL AND expense_item_id IS NOT NULL AND supplier_invoice_id IS NULL)
+      OR (source_type = 'supplier_invoice' AND transaction_id IS NULL AND expense_item_id IS NULL AND supplier_invoice_id IS NOT NULL)
+    )
+  );
+
+  CREATE TABLE IF NOT EXISTS fixed_asset_disposals (
+    id TEXT PRIMARY KEY,
+    fixed_asset_id TEXT NOT NULL UNIQUE REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    disposal_date TEXT NOT NULL,
+    sale_amount_ht_cents INTEGER NOT NULL DEFAULT 0,
+    sale_vat_amount_cents INTEGER NOT NULL DEFAULT 0,
+    sale_amount_ttc_cents INTEGER NOT NULL DEFAULT 0,
+    customer_invoice_id TEXT REFERENCES customer_invoices(id) ON DELETE SET NULL,
+    transaction_id TEXT REFERENCES transactions(id) ON DELETE SET NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (type IN ('sale', 'scrap'))
+  );
 `);
 
 // Ensure default settings exist
@@ -175,6 +251,7 @@ for (const migration of futureFlowMigrations) {
 }
 
 const accountingMigrations = [
+  `ALTER TABLE app_settings ADD COLUMN fixed_asset_threshold_cents INTEGER NOT NULL DEFAULT 50000;`,
   `ALTER TABLE expense_items ADD COLUMN accounting_status TEXT NOT NULL DEFAULT 'recognized';`,
   `ALTER TABLE expense_items ADD COLUMN source_transaction_id TEXT REFERENCES transactions(id) ON DELETE SET NULL;`,
   `ALTER TABLE expense_reimbursements ADD COLUMN status TEXT NOT NULL DEFAULT 'settled';`,
@@ -200,6 +277,26 @@ sqlite.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS expense_items_source_transaction_unique
   ON expense_items(source_transaction_id)
   WHERE source_transaction_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS fixed_assets_source_transaction_unique
+  ON fixed_assets(source_transaction_id)
+  WHERE source_transaction_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS fixed_assets_source_expense_unique
+  ON fixed_assets(source_expense_item_id)
+  WHERE source_expense_item_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS fixed_asset_sources_transaction_unique
+  ON fixed_asset_sources(transaction_id)
+  WHERE transaction_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS fixed_asset_sources_expense_unique
+  ON fixed_asset_sources(expense_item_id)
+  WHERE expense_item_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS fixed_asset_sources_supplier_invoice_unique
+  ON fixed_asset_sources(supplier_invoice_id)
+  WHERE supplier_invoice_id IS NOT NULL;
 `);
 
 export const db = drizzle(sqlite, { schema });

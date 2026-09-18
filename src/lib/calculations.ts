@@ -6,6 +6,9 @@ import {
   customerInvoices,
   expenseItems,
   expenseReimbursements,
+  fixedAssetDisposals,
+  fixedAssets,
+  fixedAssetSources,
   futureFlows,
   supplierInvoices,
   syncStates,
@@ -42,6 +45,7 @@ const DEFAULT_SETTINGS = (): AppSettings => ({
   fiscalYearEndMonth: 12,
   vatRegime: "normal_monthly",
   vatPaymentMethod: "debits",
+  fixedAssetThresholdCents: 50000,
   updatedAt: new Date().toISOString(),
 });
 
@@ -60,6 +64,9 @@ export async function getDashboardData(): Promise<DashboardData> {
   const allCollaborators = db.select().from(collaborators).all();
   const allExpenseItems = db.select().from(expenseItems).all();
   const allExpenseReimbursements = db.select().from(expenseReimbursements).all();
+  const allFixedAssets = db.select().from(fixedAssets).all();
+  const allFixedAssetDisposals = db.select().from(fixedAssetDisposals).all();
+  const allFixedAssetSources = db.select().from(fixedAssetSources).all();
 
   const settings = allSettings[0] || DEFAULT_SETTINGS();
   const account = allAccounts[0] || {
@@ -99,6 +106,9 @@ export async function getDashboardData(): Promise<DashboardData> {
     supplierInvoices: allSupplierInvoices,
     expenseItems: allExpenseItems,
     reimbursements: allExpenseReimbursements,
+    fixedAssets: allFixedAssets,
+    fixedAssetDisposals: allFixedAssetDisposals,
+    fixedAssetSources: allFixedAssetSources,
     collaboratorNames,
     manualFlows,
   };

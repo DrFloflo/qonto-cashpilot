@@ -17,7 +17,8 @@ Ajouter au dashboard un onglet dédié **« Immobilisations & amortissements »*
 - reprendre des immobilisations déjà partiellement amorties ;
 - enregistrer une cession ou une mise au rebut ;
 - exporter le registre et le plan d'amortissement au format CSV ;
-- intégrer la dotation aux amortissements aux indicateurs comptables du dashboard, sans créer de flux de trésorerie.
+- intégrer la dotation aux amortissements aux indicateurs comptables du dashboard, sans créer de flux de trésorerie ;
+- rattacher chaque immobilisation à plusieurs sources d'achat homogènes : plusieurs transactions Qonto, plusieurs notes de frais ou plusieurs factures fournisseur ; les familles de sources ne sont pas mélangées sur un même actif.
 
 ## 3. Principes comptables retenus
 
@@ -70,7 +71,9 @@ Les frais accessoires peuvent notamment inclure livraison, installation, montage
 
 - L'achat est un flux de trésorerie provenant de la transaction ou facture fournisseur, s'il existe.
 - La dotation est une charge calculée non décaissée : elle affecte le résultat comptable estimé, mais jamais le solde bancaire ni les projections de trésorerie.
-- Un même achat ne doit pas être compté à la fois en charge courante et en dotation. Lorsqu'une immobilisation est liée à une facture fournisseur, son montant HT doit être neutralisé dans les charges courantes du calcul de résultat et remplacé par la dotation de la période.
+- Un même achat ne doit pas être compté à la fois en charge courante et en dotation. Lorsqu'une immobilisation est liée à une transaction Qonto, une note de frais ou une facture fournisseur, sa charge HT doit être neutralisée dans le calcul de résultat et remplacée par la dotation de la période.
+- Cette neutralisation comptable ne supprime jamais le décaissement bancaire ni, dans le cas d'une note de frais, la dette et le remboursement dus au collaborateur.
+- Si la source est une note de frais avec prorata professionnel, seule la part professionnelle immobilisable sert à constituer le coût d'entrée ; la part personnelle reste exclue.
 
 ## 4. Données d'une immobilisation
 
@@ -93,8 +96,10 @@ Les frais accessoires peuvent notamment inclure livraison, installation, montage
 - Numéro interne d'immobilisation, généré automatiquement et modifiable.
 - Description ou notes.
 - Numéro de facture.
-- Lien vers une facture fournisseur Qonto.
-- Lien vers une transaction Qonto.
+- Source d'achat exclusive : `transaction_qonto`, `note_de_frais`, `facture_fournisseur` ou `aucune` pour une reprise d'antériorité ou une saisie sans source disponible.
+- Lien vers une transaction Qonto lorsque la source est `transaction_qonto`.
+- Lien vers une note de frais lorsque la source est `note_de_frais`.
+- Lien facultatif supplémentaire vers une facture fournisseur Qonto, quelle que soit la source d'achat.
 - Frais accessoires immobilisables.
 - Valeur résiduelle.
 - Coût d'entrée calculé.
@@ -236,8 +241,12 @@ Le formulaire est organisé en sections :
 2. achat et TVA ;
 3. paramètres d'amortissement ;
 4. reprise d'antériorité ;
-5. liens Qonto ;
+5. source d'achat et liens Qonto ;
 6. aperçu du plan avant enregistrement.
+
+Le sélecteur de source propose une transaction Qonto directe, une note de frais ou une facture fournisseur. Ces trois choix sont mutuellement exclusifs. Pour une note de frais, l'interface affiche le collaborateur, le montant professionnel, la TVA déductible et le statut de remboursement. Lorsqu'une transaction ou une note de frais constitue la source, une facture fournisseur peut être associée séparément comme pièce comptable.
+
+Les sources peuvent être sélectionnées en nombre pour gérer un paiement fractionné ou un équipement en kit acheté auprès de plusieurs fournisseurs. Aucun minimum unitaire spécifique n'est imposé aux notes de frais ou factures ; le seuil indicatif d'immobilisation de 500 € HT reste une alerte non bloquante appliquée au coût total de l'actif.
 
 Les calculs sont prévisualisés instantanément côté interface puis recalculés et validés côté serveur.
 
@@ -269,7 +278,9 @@ Les montants utilisent deux décimales et les dates le format ISO YYYY-MM-DD.
 - `asset_number` : numéro interne unique.
 - `label`, `description`, `category`, `supplier_name`.
 - `purchase_date`, `service_date`.
-- `invoice_number`, `supplier_invoice_id`, `transaction_id`, `document_url`.
+- `invoice_number`, `supplier_invoice_id`, `document_url`.
+- `source_type` : `transaction`, `expense_item` ou `none`.
+- `source_transaction_id` et `source_expense_item_id`, avec contrainte métier garantissant qu'un seul des deux est renseigné conformément à `source_type`.
 - `amount_ht_cents`, `vat_amount_cents`, `amount_ttc_cents`.
 - `vat_rate`, `vat_deductible_rate`.
 - `incidental_costs_cents`, `acquisition_cost_cents`.
@@ -311,8 +322,10 @@ Avant l'implémentation, la documentation locale de la version installée de Nex
 ## 11. Validation et sécurité métier
 
 - Validation systématique côté serveur, même si le formulaire valide côté client.
-- Identifiants de facture et transaction vérifiés avant liaison.
-- Une facture ou transaction peut être liée à plusieurs fiches uniquement si la somme affectée ne dépasse pas son montant ; cette ventilation avancée affiche un avertissement en V1.
+- Identifiants de facture, transaction et note de frais vérifiés avant liaison.
+- Une immobilisation peut avoir plusieurs sources, mais toutes doivent appartenir à la même famille : transactions Qonto, notes de frais ou factures fournisseur.
+- Une transaction ou une note de frais ne peut être la source que d'une seule immobilisation en V1 ; la ventilation d'une source entre plusieurs immobilisations est hors périmètre.
+- Le lien facultatif vers une facture fournisseur est indépendant de la source d'achat, mais l'application avertit si les montants ou références sont incohérents.
 - Les erreurs métier sont retournées sous une forme exploitable par l'interface.
 - Toute mutation provoque la revalidation du dashboard.
 - Les suppressions sont physiques en V1, avec confirmation forte. Un journal d'audit complet est hors périmètre.
@@ -339,7 +352,10 @@ Avant l'implémentation, la documentation locale de la version installée de Nex
 - Filtres et recherche du registre.
 - Export CSV conforme aux données affichées.
 - Aucun changement de trésorerie après création ou recalcul d'un plan.
-- Dotation incluse une seule fois dans le résultat estimé lorsqu'une facture fournisseur est liée.
+- Rattachement exclusif réussi à une transaction directe ou à une note de frais.
+- Impossibilité de rattacher la même source à deux immobilisations ou les deux types de source à une fiche.
+- Dotation incluse une seule fois dans le résultat estimé lorsqu'une transaction, une note de frais ou une facture fournisseur est liée.
+- Une note de frais immobilisée conserve son montant remboursable et son suivi de remboursement, mais sa charge professionnelle est neutralisée au profit de la dotation.
 - Messages explicites pour dates, montants, durée ou cumul invalides.
 
 ## 13. Hors périmètre V1
@@ -358,7 +374,7 @@ Avant l'implémentation, la documentation locale de la version installée de Nex
 
 1. Confirmer la convention de prorata : jours réels sur 365/366, ou convention comptable de 360 jours.
 2. Confirmer que les catégories, durées et comptes proposés conviennent au plan comptable de l'entreprise.
-3. Confirmer l'intégration au résultat estimé du dashboard dès la V1, avec neutralisation d'une facture fournisseur liée pour éviter le double comptage.
+3. Confirmer l'intégration au résultat estimé du dashboard dès la V1, avec neutralisation de la transaction, de la note de frais ou de la facture fournisseur liée pour éviter le double comptage.
 4. Confirmer que la suppression physique avec confirmation est acceptable, plutôt qu'un archivage obligatoire.
 5. Confirmer que les exports CSV suffisent, sans export d'écritures comptables.
 
