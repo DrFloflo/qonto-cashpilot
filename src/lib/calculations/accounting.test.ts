@@ -16,7 +16,7 @@ import {
   getStandaloneVatTransactions,
 } from "./accounting.ts";
 import { calculateMonthlyTransactions } from "./monthly.ts";
-import { buildFixedAssetDeductibleVatBySource, getBalanceStatus } from "./vat.ts";
+import { buildFixedAssetDeductibleVatBySource, computeVatForFiscalYear, getBalanceStatus } from "./vat.ts";
 
 const expense = (overrides: Partial<ExpenseItem> = {}): ExpenseItem => ({
   id: "expense-1",
@@ -237,6 +237,34 @@ test("asset deductible VAT is allocated exactly across all attached source docum
       + (allocations.get("transaction:transaction-1") ?? 0),
     1001,
   );
+});
+
+test("fiscal VAT summary and detail use the asset's partially deductible VAT", () => {
+  const result = computeVatForFiscalYear({
+    now: new Date("2026-06-30T12:00:00.000Z"),
+    todayStr: "2026-06-30",
+    settings: {
+      id: "default",
+      fiscalYearEndDay: 31,
+      fiscalYearEndMonth: 12,
+      vatRegime: "normal_monthly",
+      vatPaymentMethod: "debits",
+      fixedAssetThresholdCents: 50000,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    transactions: [],
+    customerInvoices: [],
+    supplierInvoices: [supplierInvoice()],
+    expenseItems: [],
+    reimbursements: [],
+    fixedAssets: [fixedAsset()],
+    fixedAssetSources: [],
+    collaboratorNames: new Map(),
+    manualFlows: [],
+  });
+
+  assert.equal(result.summary.deductibleReal, 5);
+  assert.equal(result.items[0]?.vatAmount, 5);
 });
 
 test("VAT credit above threshold stays carried and only becomes requestable", () => {

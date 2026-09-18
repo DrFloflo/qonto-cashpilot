@@ -163,16 +163,16 @@ export function computeVatForFiscalYear({
 
   for (const expense of expenseItems) {
     const expenseDate = expense.date.slice(0, 10);
+    const deductibleVatCents = fixedAssetVatBySource.get(sourceKey("expense_item", expense.id))
+      ?? toCents(expense.vatDeductible);
     if (
       expense.accountingStatus === "canceled"
       || expense.type !== "ndf"
-      || expense.vatDeductible <= 0
+      || deductibleVatCents <= 0
       || !isInFiscalYear(expenseDate)
       || expenseDate > todayStr
     ) continue;
 
-    const deductibleVatCents = fixedAssetVatBySource.get(sourceKey("expense_item", expense.id))
-      ?? toCents(expense.vatDeductible);
     const deductibleVat = fromCents(deductibleVatCents);
     deductibleRealCents += deductibleVatCents;
     items.push({
