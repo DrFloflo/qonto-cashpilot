@@ -27,6 +27,7 @@ import { syncAutomaticRecurringFlows } from "./recurring-transactions";
 
 export { getFiscalYearBounds } from "./calculations/fiscal-year";
 export type {
+  AccountingActivityItem,
   ChartDayOperation,
   ChartPoint,
   DashboardData,
@@ -138,6 +139,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       offset,
       vatFiscalSummary: calculation.summary,
       vatProvisionItems: calculation.items,
+      accountingActivityItems: calculation.accountingActivityItems,
     });
     const bounds = getFiscalYearBounds(
       now,

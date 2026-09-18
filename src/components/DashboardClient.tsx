@@ -62,6 +62,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
     ?? kpis.vatFiscalYears[0];
   const currentVatSummary = selectedVatYear?.vatFiscalSummary ?? kpis.vatFiscalSummary;
   const currentVatItems = selectedVatYear?.vatProvisionItems ?? kpis.vatProvisionItems;
+  const currentAccountingActivityItems = selectedVatYear?.accountingActivityItems ?? [];
   const selectedFiscalChart = fiscalYearCharts.find((year) => year.offset === selectedFiscalOffset)?.data
     ?? fiscalYearCharts[0]?.data;
 
@@ -138,6 +139,8 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
               onOffsetChange={setSelectedFiscalOffset}
               onOpenSettings={() => setIsSettingsOpen(true)}
               onOpenVatDetail={() => setActiveModal("vat")}
+              onOpenAccountingRevenueDetail={() => setActiveModal("accountingRevenue")}
+              onOpenAccountingExpensesDetail={() => setActiveModal("accountingExpenses")}
             />
 
             {/* Chart Section */}
@@ -179,6 +182,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
         currentVatSummary={currentVatSummary}
         currentVatItems={currentVatItems}
         fiscalYears={kpis.vatFiscalYears}
+        accountingActivityItems={currentAccountingActivityItems}
         selectedFiscalOffset={selectedFiscalOffset}
         onOffsetChange={setSelectedFiscalOffset}
         onOpenSettings={() => setIsSettingsOpen(true)}

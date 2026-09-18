@@ -12,7 +12,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-export type DetailModalType = "revenue" | "expenses" | "vat" | null;
+export type DetailModalType = "revenue" | "expenses" | "vat" | "accountingRevenue" | "accountingExpenses" | null;
 
 interface DashboardKpiCardsProps {
   kpis: DashboardData["kpis"];

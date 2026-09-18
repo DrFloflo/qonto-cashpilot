@@ -21,6 +21,7 @@ import {
 import { getFiscalYearBounds } from "./fiscal-year";
 import { isOutstanding } from "./flows";
 import type {
+  AccountingActivityItem,
   ExpandedFlow,
   FiscalYearInfo,
   VatCalculationResult,
@@ -224,6 +225,17 @@ export function computeVatForFiscalYear({
   );
   const revenueFuture = sumFlowCents(fiscalFutureFlows, "inflow", "amountHt") / 100;
   const expensesFuture = sumFlowCents(fiscalFutureFlows, "outflow", "amountHt") / 100;
+  const forecastActivityItems: AccountingActivityItem[] = fiscalFutureFlows.map((flow) => ({
+    id: `forecast-${flow.id}-${flow.date}`,
+    type: flow.type === "inflow" ? "revenue" : "expense",
+    source: "Flux futur",
+    label: flow.label,
+    date: flow.date,
+    amountHt: roundCurrency(flow.amountHt),
+    isForecast: true,
+  }));
+  const accountingActivityItems = [...accountingActivity.items, ...forecastActivityItems]
+    .sort((a, b) => b.date.localeCompare(a.date));
   const totalRevenue = roundCurrency(accountingActivity.revenueHt + revenueFuture);
   const totalExpenses = roundCurrency(accountingActivity.expensesHt + expensesFuture);
   const summary: VatFiscalSummary = {
@@ -250,6 +262,7 @@ export function computeVatForFiscalYear({
   return {
     summary,
     items,
+    accountingActivityItems,
     details: {
       collectedReal,
       deductibleReal,

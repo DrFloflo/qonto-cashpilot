@@ -8,7 +8,8 @@ import type {
   SupplierInvoice,
   Transaction,
 } from "@/db/schema";
-import { calculateDepreciationForPeriod } from "./depreciation";
+import { summarizeDepreciationForPeriod } from "./depreciation";
+import type { AccountingActivityItem } from "./types";
 
 const EXCLUDED_DOCUMENT_STATUSES = new Set(["canceled", "cancelled", "draft", "declined", "rejected"]);
 
@@ -21,6 +22,7 @@ export interface AccountingActivity {
   revenueHt: number;
   expensesHt: number;
   activityBalance: number;
+  items: AccountingActivityItem[];
 }
 
 export function isAccountingDocument(status: string): boolean {
@@ -55,8 +57,9 @@ export function calculateAccountingActivity(
   fixedAssetDisposals: FixedAssetDisposal[] = [],
   fixedAssetSources: FixedAssetSource[] = [],
 ): AccountingActivity {
-  const revenueCents = customerInvoices
-    .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period))
+  const recognizedCustomerInvoices = customerInvoices
+    .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period));
+  const revenueCents = recognizedCustomerInvoices
     .reduce((total, invoice) => total + toCents(invoice.totalAmountHt), 0);
   const capitalizedSupplierInvoiceIds = new Set([
     ...fixedAssets.map((asset) => asset.supplierInvoiceId),
@@ -66,19 +69,68 @@ export function calculateAccountingActivity(
     ...fixedAssets.map((asset) => asset.sourceExpenseItemId),
     ...fixedAssetSources.map((source) => source.expenseItemId),
   ].filter((id): id is string => Boolean(id)));
-  const supplierExpenseCents = supplierInvoices
-    .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period) && !capitalizedSupplierInvoiceIds.has(invoice.id))
+  const recognizedSupplierInvoices = supplierInvoices
+    .filter((invoice) => isAccountingDocument(invoice.status) && isDateInPeriod(invoice.issueDate, period) && !capitalizedSupplierInvoiceIds.has(invoice.id));
+  const supplierExpenseCents = recognizedSupplierInvoices
     .reduce((total, invoice) => total + toCents(invoice.totalAmountHt), 0);
-  const expenseReportCents = expenseItems
-    .filter((expense) => expense.accountingStatus !== "canceled" && isDateInPeriod(expense.date, period) && !capitalizedExpenseIds.has(expense.id))
+  const recognizedExpenseItems = expenseItems
+    .filter((expense) => expense.accountingStatus !== "canceled" && isDateInPeriod(expense.date, period) && !capitalizedExpenseIds.has(expense.id));
+  const expenseReportCents = recognizedExpenseItems
     .reduce((total, expense) => total + toCents(getProfessionalExpenseHt(expense)), 0);
-  const depreciationCents = toCents(calculateDepreciationForPeriod(fixedAssets, fixedAssetDisposals, period));
+  const disposalByAsset = new Map(fixedAssetDisposals.map((disposal) => [disposal.fixedAssetId, disposal]));
+  const depreciationItems = fixedAssets
+    .filter((asset) => asset.status !== "draft")
+    .map((asset) => ({
+      asset,
+      amountCents: summarizeDepreciationForPeriod(asset, period, disposalByAsset.get(asset.id)).depreciationCents,
+    }))
+    .filter(({ amountCents }) => amountCents > 0);
+  const depreciationCents = depreciationItems.reduce((total, item) => total + item.amountCents, 0);
   const expensesCents = supplierExpenseCents + expenseReportCents + depreciationCents;
+  const items: AccountingActivityItem[] = [
+    ...recognizedCustomerInvoices.map((invoice) => ({
+      id: `customer-${invoice.id}`,
+      type: "revenue" as const,
+      source: "Facture client" as const,
+      label: `${invoice.clientName} (${invoice.invoiceNumber})`,
+      date: invoice.issueDate.slice(0, 10),
+      amountHt: fromCents(toCents(invoice.totalAmountHt)),
+      isForecast: false,
+    })),
+    ...recognizedSupplierInvoices.map((invoice) => ({
+      id: `supplier-${invoice.id}`,
+      type: "expense" as const,
+      source: "Facture fournisseur" as const,
+      label: `${invoice.supplierName} (${invoice.invoiceNumber || "N/A"})`,
+      date: invoice.issueDate.slice(0, 10),
+      amountHt: fromCents(toCents(invoice.totalAmountHt)),
+      isForecast: false,
+    })),
+    ...recognizedExpenseItems.map((expense) => ({
+      id: `expense-${expense.id}`,
+      type: "expense" as const,
+      source: expense.type === "ik" ? "Indemnité kilométrique" as const : "Note de frais" as const,
+      label: expense.label,
+      date: expense.date.slice(0, 10),
+      amountHt: fromCents(toCents(getProfessionalExpenseHt(expense))),
+      isForecast: false,
+    })),
+    ...depreciationItems.map(({ asset, amountCents }) => ({
+      id: `depreciation-${asset.id}-${period.startDate}`,
+      type: "expense" as const,
+      source: "Dotation aux amortissements" as const,
+      label: `${asset.label} (${asset.assetNumber})`,
+      date: period.endDate,
+      amountHt: fromCents(amountCents),
+      isForecast: false,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
 
   return {
     revenueHt: fromCents(revenueCents),
     expensesHt: fromCents(expensesCents),
     activityBalance: fromCents(revenueCents - expensesCents),
+    items,
   };
 }
 

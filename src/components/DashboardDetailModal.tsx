@@ -2,7 +2,7 @@
 
 import React from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { DashboardData, VatItem, VatFiscalSummary, VatYearData } from "@/lib/calculations";
+import type { AccountingActivityItem, DashboardData, VatItem, VatFiscalSummary, VatYearData } from "@/lib/calculations";
 import type { DetailModalType } from "@/components/DashboardKpiCards";
 import { X, Settings } from "lucide-react";
 
@@ -13,6 +13,7 @@ interface DashboardDetailModalProps {
   currentVatSummary: VatFiscalSummary | undefined;
   currentVatItems: VatItem[];
   fiscalYears: VatYearData[];
+  accountingActivityItems: AccountingActivityItem[];
   selectedFiscalOffset: number;
   onOffsetChange: (offset: number) => void;
   onOpenSettings: () => void;
@@ -25,6 +26,7 @@ export function DashboardDetailModal({
   currentVatSummary,
   currentVatItems,
   fiscalYears,
+  accountingActivityItems,
   selectedFiscalOffset,
   onOffsetChange,
   onOpenSettings,
@@ -41,11 +43,15 @@ export function DashboardDetailModal({
               {activeModal === "revenue" && "Détail des encaissements bancaires du mois"}
               {activeModal === "expenses" && "Détail des décaissements bancaires du mois"}
               {activeModal === "vat" && "Détail de l’estimation annuelle de TVA"}
+              {activeModal === "accountingRevenue" && "Détail des produits comptabilisés HT"}
+              {activeModal === "accountingExpenses" && "Détail des charges comptabilisées HT"}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               {activeModal === "revenue" && `Total encaissé : ${formatCurrency(kpis.monthInflows)} (${kpis.monthInflowItems.length} ligne(s)) — flux de trésorerie, pas CA comptable`}
               {activeModal === "expenses" && `Total décaissé : ${formatCurrency(kpis.monthOutflows)} (${kpis.monthOutflowItems.length} ligne(s)) — flux de trésorerie, pas charges comptables`}
               {activeModal === "vat" && `Estimation nette : ${formatCurrency(kpis.vatToProvision)} (${kpis.vatProvisionItems.length} élément(s))`}
+              {activeModal === "accountingRevenue" && `Total HT : ${formatCurrency(currentVatSummary?.totalRevenue ?? 0)} (${accountingActivityItems.filter((item) => item.type === "revenue").length} ligne(s)) — ${currentVatSummary?.fiscalYear.startDateStr} au ${currentVatSummary?.fiscalYear.endDateStr}`}
+              {activeModal === "accountingExpenses" && `Total HT : ${formatCurrency(currentVatSummary?.totalExpenses ?? 0)} (${accountingActivityItems.filter((item) => item.type === "expense").length} ligne(s)) — ${currentVatSummary?.fiscalYear.startDateStr} au ${currentVatSummary?.fiscalYear.endDateStr}`}
             </p>
           </div>
           <button
@@ -114,6 +120,13 @@ export function DashboardDetailModal({
                 </tbody>
               </table>
             )
+          )}
+
+          {(activeModal === "accountingRevenue" || activeModal === "accountingExpenses") && (
+            <AccountingActivityTable
+              items={accountingActivityItems.filter((item) => item.type === (activeModal === "accountingRevenue" ? "revenue" : "expense"))}
+              type={activeModal === "accountingRevenue" ? "revenue" : "expense"}
+            />
           )}
 
           {activeModal === "vat" && (
@@ -238,6 +251,53 @@ export function DashboardDetailModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function AccountingActivityTable({
+  items,
+  type,
+}: {
+  items: AccountingActivityItem[];
+  type: "revenue" | "expense";
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground text-center py-8">
+        Aucun {type === "revenue" ? "produit" : "charge"} comptabilisé sur cet exercice.
+      </p>
+    );
+  }
+
+  return (
+    <table className="w-full text-left text-xs">
+      <thead className="bg-muted/40 text-muted-foreground border-b border-border/40 font-medium">
+        <tr>
+          <th className="py-2.5 px-3">Date</th>
+          <th className="py-2.5 px-3">Origine</th>
+          <th className="py-2.5 px-3">Libellé</th>
+          <th className="py-2.5 px-3">Nature</th>
+          <th className="py-2.5 px-3 text-right">Montant HT</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border/40">
+        {items.map((item) => (
+          <tr key={item.id} className="hover:bg-muted/20">
+            <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(item.date)}</td>
+            <td className="py-2.5 px-3 whitespace-nowrap text-muted-foreground">{item.source}</td>
+            <td className="py-2.5 px-3 font-medium">{item.label}</td>
+            <td className="py-2.5 px-3 whitespace-nowrap">
+              <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] ${item.isForecast ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-muted text-muted-foreground"}`}>
+                {item.isForecast ? "Prévision" : "Réel"}
+              </span>
+            </td>
+            <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${type === "revenue" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+              {type === "revenue" ? "+" : "-"}{formatCurrency(item.amountHt)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

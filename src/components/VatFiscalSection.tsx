@@ -4,7 +4,7 @@ import React from "react";
 import { formatCurrency } from "@/lib/utils";
 import type { FiscalYearChartData, VatFiscalSummary, VatYearData } from "@/lib/calculations";
 import { FiscalYearFlowChart } from "@/components/FiscalYearFlowChart";
-import { Receipt, Settings, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import { ChevronRight, Receipt, Settings, TrendingUp, TrendingDown, Scale } from "lucide-react";
 
 interface VatFiscalSectionProps {
   summary: VatFiscalSummary | undefined;
@@ -14,6 +14,8 @@ interface VatFiscalSectionProps {
   onOffsetChange: (offset: number) => void;
   onOpenSettings: () => void;
   onOpenVatDetail: () => void;
+  onOpenAccountingRevenueDetail: () => void;
+  onOpenAccountingExpensesDetail: () => void;
 }
 
 export function VatFiscalSection({
@@ -24,6 +26,8 @@ export function VatFiscalSection({
   onOffsetChange,
   onOpenSettings,
   onOpenVatDetail,
+  onOpenAccountingRevenueDetail,
+  onOpenAccountingExpensesDetail,
 }: VatFiscalSectionProps) {
   return (
     <section className="rounded-xl border border-border bg-card/60 p-4">
@@ -127,10 +131,15 @@ export function VatFiscalSection({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           {/* Realized figures are accounting documents; forecasts stay separate. */}
-          <div className="p-2.5 rounded-lg bg-background border border-border/60">
+          <button
+            type="button"
+            onClick={onOpenAccountingRevenueDetail}
+            className="p-2.5 rounded-lg bg-background border border-border/60 text-left hover:border-emerald-500/50 hover:shadow-sm transition-all cursor-pointer group"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-[11px] group-hover:text-foreground transition-colors flex items-center gap-1">
                 Produits comptabilisés HT ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
+                <ChevronRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
               </span>
               <div className="p-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 <TrendingUp className="w-3.5 h-3.5" />
@@ -141,17 +150,23 @@ export function VatFiscalSection({
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
               <span>Réel : {formatCurrency(summary?.revenueReal ?? 0)}</span>
-              {selectedFiscalOffset === 0 && (
-                <span>Prévi : +{formatCurrency(summary?.revenueFuture ?? 0)}</span>
-              )}
+              <span className="text-primary font-medium underline">Voir détail</span>
             </div>
-          </div>
+            {selectedFiscalOffset === 0 && (
+              <div className="text-[10px] text-muted-foreground mt-0.5">Prévi : +{formatCurrency(summary?.revenueFuture ?? 0)}</div>
+            )}
+          </button>
 
           {/* Encart Charges de l'année en cours */}
-          <div className="p-2.5 rounded-lg bg-background border border-border/60">
+          <button
+            type="button"
+            onClick={onOpenAccountingExpensesDetail}
+            className="p-2.5 rounded-lg bg-background border border-border/60 text-left hover:border-rose-500/50 hover:shadow-sm transition-all cursor-pointer group"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-[11px] group-hover:text-foreground transition-colors flex items-center gap-1">
                 Charges comptabilisées HT ({selectedFiscalOffset === 0 ? "exercice en cours" : "exercice clôturé"})
+                <ChevronRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
               </span>
               <div className="p-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
                 <TrendingDown className="w-3.5 h-3.5" />
@@ -162,11 +177,12 @@ export function VatFiscalSection({
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
               <span>Réel : {formatCurrency(summary?.expensesReal ?? 0)}</span>
-              {selectedFiscalOffset === 0 && (
-                <span>Prévi : -{formatCurrency(summary?.expensesFuture ?? 0)}</span>
-              )}
+              <span className="text-primary font-medium underline">Voir détail</span>
             </div>
-          </div>
+            {selectedFiscalOffset === 0 && (
+              <div className="text-[10px] text-muted-foreground mt-0.5">Prévi : -{formatCurrency(summary?.expensesFuture ?? 0)}</div>
+            )}
+          </button>
 
           {/* This is not statutory net profit: tax, depreciation and adjustments are excluded. */}
           <div className="p-2.5 rounded-lg bg-background border border-border/60">

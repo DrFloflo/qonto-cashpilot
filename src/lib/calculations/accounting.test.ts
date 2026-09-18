@@ -109,7 +109,17 @@ test("December expense and January reimbursement are separated between accountin
   const januaryCash = calculateMonthlyTransactions([transaction({ vatAmount: 0 })], new Date("2026-01-15T12:00:00Z"));
 
   assert.equal(december.expensesHt, 50);
+  assert.deepEqual(december.items, [{
+    id: "expense-expense-1",
+    type: "expense",
+    source: "Note de frais",
+    label: "Professional meal",
+    date: "2025-12-15",
+    amountHt: 50,
+    isForecast: false,
+  }]);
   assert.equal(january.expensesHt, 0);
+  assert.deepEqual(january.items, []);
   assert.equal(januaryCash.outflows, 60);
 });
 
@@ -167,4 +177,19 @@ test("bank loan receipt is cash inflow but not accounting revenue", () => {
 
   assert.equal(activity.revenueHt, 0);
   assert.equal(cash.inflows, 10_000);
+});
+
+test("accounting detail lines reconcile customer and supplier invoice totals", () => {
+  const activity = calculateAccountingActivity(
+    { startDate: "2025-12-01", endDate: "2026-01-31" },
+    [customerInvoice()],
+    [supplierInvoice()],
+    [],
+  );
+
+  assert.equal(activity.revenueHt, 100);
+  assert.equal(activity.expensesHt, 50);
+  assert.equal(activity.items.reduce((total, item) => total + (item.type === "revenue" ? item.amountHt : 0), 0), activity.revenueHt);
+  assert.equal(activity.items.reduce((total, item) => total + (item.type === "expense" ? item.amountHt : 0), 0), activity.expensesHt);
+  assert.deepEqual(activity.items.map((item) => item.source).sort(), ["Facture client", "Facture fournisseur"]);
 });

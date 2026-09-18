@@ -19,6 +19,16 @@ export interface VatItem {
   vatAmount: number;
 }
 
+export interface AccountingActivityItem {
+  id: string;
+  type: "revenue" | "expense";
+  source: "Facture client" | "Facture fournisseur" | "Note de frais" | "Indemnité kilométrique" | "Dotation aux amortissements" | "Flux futur";
+  label: string;
+  date: string;
+  amountHt: number;
+  isForecast: boolean;
+}
+
 export interface FiscalYearInfo {
   endDay: number;
   endMonth: number;
@@ -59,6 +69,7 @@ export interface VatYearData {
   offset: number;
   vatFiscalSummary: VatFiscalSummary;
   vatProvisionItems: VatItem[];
+  accountingActivityItems: AccountingActivityItem[];
 }
 
 export interface ChartDayOperation {
@@ -135,6 +146,7 @@ export interface VatDetails {
 export interface VatCalculationResult {
   summary: VatFiscalSummary;
   items: VatItem[];
+  accountingActivityItems: AccountingActivityItem[];
   details: VatDetails;
 }
 
