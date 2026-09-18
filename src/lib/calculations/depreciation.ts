@@ -120,16 +120,25 @@ export function summarizeDepreciationForPeriod(
   disposal?: FixedAssetDisposal | null,
 ): FiscalDepreciationSummary {
   const schedule = buildMonthlyDepreciationSchedule(asset, disposal);
-  const openingAccumulated = asset.isOpeningBalance && asset.openingDate && asset.openingDate <= period.startDate
+  const openingAccumulatedAtPeriodStart = asset.isOpeningBalance && asset.openingDate && asset.openingDate <= period.startDate
+    ? asset.openingAccumulatedDepreciationCents
+    : 0;
+  const openingAccumulatedRecognizedInPeriod = asset.isOpeningBalance
+    && asset.openingDate
+    && asset.openingDate > period.startDate
+    && asset.openingDate <= period.endDate
     ? asset.openingAccumulatedDepreciationCents
     : 0;
   const beforeCents = schedule
     .filter((item) => item.endDate < period.startDate)
-    .reduce((sum, item) => sum + item.depreciationCents, openingAccumulated);
+    .reduce((sum, item) => sum + item.depreciationCents, openingAccumulatedAtPeriodStart);
   const depreciationCents = schedule
     .filter((item) => item.endDate >= period.startDate && item.startDate <= period.endDate)
     .reduce((sum, item) => sum + item.depreciationCents, 0);
-  const accumulatedDepreciationCents = Math.min(asset.depreciableBaseCents, beforeCents + depreciationCents);
+  const accumulatedDepreciationCents = Math.min(
+    asset.depreciableBaseCents,
+    beforeCents + openingAccumulatedRecognizedInPeriod + depreciationCents,
+  );
   return {
     openingNetBookValueCents: Math.max(asset.residualValueCents, asset.acquisitionCostCents - beforeCents),
     depreciationCents,

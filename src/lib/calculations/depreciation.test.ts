@@ -112,3 +112,43 @@ test("summarizes a fiscal period", () => {
   assert.equal(summary.closingNetBookValueCents, 0);
   assert.equal(summary.accumulatedDepreciationCents, 120000);
 });
+
+test("includes an opening-balance takeover occurring during the fiscal period", () => {
+  const openingAsset = asset({
+    isOpeningBalance: true,
+    openingDate: "2026-07-01",
+    openingAccumulatedDepreciationCents: 60000,
+  });
+  const summary = summarizeDepreciationForPeriod(openingAsset, {
+    startDate: "2026-04-01",
+    endDate: "2026-12-31",
+  });
+
+  assert.equal(summary.openingNetBookValueCents, 120000);
+  assert.equal(
+    summary.accumulatedDepreciationCents,
+    openingAsset.openingAccumulatedDepreciationCents + summary.depreciationCents,
+  );
+  assert.equal(
+    summary.closingNetBookValueCents,
+    openingAsset.acquisitionCostCents - summary.accumulatedDepreciationCents,
+  );
+});
+
+test("includes an opening-balance takeover dated on the first day of the fiscal period", () => {
+  const openingAsset = asset({
+    isOpeningBalance: true,
+    openingDate: "2026-04-01",
+    openingAccumulatedDepreciationCents: 30000,
+  });
+  const summary = summarizeDepreciationForPeriod(openingAsset, {
+    startDate: "2026-04-01",
+    endDate: "2026-09-30",
+  });
+
+  assert.equal(summary.openingNetBookValueCents, 90000);
+  assert.equal(
+    summary.accumulatedDepreciationCents,
+    openingAsset.openingAccumulatedDepreciationCents + summary.depreciationCents,
+  );
+});

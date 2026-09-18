@@ -4,6 +4,8 @@ import type {
   CustomerInvoice,
   ExpenseItem,
   ExpenseReimbursement,
+  FixedAsset,
+  FixedAssetSource,
   SupplierInvoice,
   Transaction,
 } from "../../db/schema.ts";
@@ -14,7 +16,7 @@ import {
   getStandaloneVatTransactions,
 } from "./accounting.ts";
 import { calculateMonthlyTransactions } from "./monthly.ts";
-import { getBalanceStatus } from "./vat.ts";
+import { buildFixedAssetDeductibleVatBySource, getBalanceStatus } from "./vat.ts";
 
 const expense = (overrides: Partial<ExpenseItem> = {}): ExpenseItem => ({
   id: "expense-1",
@@ -78,6 +80,44 @@ const supplierInvoice = (overrides: Partial<SupplierInvoice> = {}): SupplierInvo
   totalVatAmount: 10,
   totalAmountTtc: 60,
   rawJson: null,
+  ...overrides,
+});
+
+const fixedAsset = (overrides: Partial<FixedAsset> = {}): FixedAsset => ({
+  id: "asset-1",
+  assetNumber: "IMMO-0001",
+  label: "Computer",
+  description: null,
+  category: "computer",
+  supplierName: "Acme",
+  purchaseDate: "2026-01-02",
+  serviceDate: "2026-01-02",
+  invoiceNumber: "S-1",
+  supplierInvoiceId: "supplier-1",
+  documentUrl: null,
+  sourceType: "none",
+  sourceTransactionId: null,
+  sourceExpenseItemId: null,
+  amountHtCents: 5000,
+  vatAmountCents: 1000,
+  amountTtcCents: 6000,
+  vatRate: 20,
+  vatDeductibleRate: 50,
+  incidentalCostsCents: 0,
+  acquisitionCostCents: 5500,
+  residualValueCents: 0,
+  depreciableBaseCents: 5500,
+  depreciationMethod: "straight_line",
+  depreciationDurationMonths: 36,
+  assetAccount: "2183",
+  depreciationAccount: "28183",
+  expenseAccount: "68112",
+  isOpeningBalance: false,
+  openingDate: null,
+  openingAccumulatedDepreciationCents: 0,
+  status: "in_service",
+  createdAt: "2026-01-02T00:00:00.000Z",
+  updatedAt: "2026-01-02T00:00:00.000Z",
   ...overrides,
 });
 
@@ -149,6 +189,54 @@ test("customer VAT uses issue date on debit basis and paidAt on collection basis
 test("supplier invoice and matching transaction VAT are not counted twice", () => {
   const bankTransaction = transaction({ label: "ACME HOSTING", amount: -60, amountCents: -6000 });
   assert.deepEqual(getStandaloneVatTransactions([bankTransaction], [supplierInvoice()], [], []), []);
+});
+
+test("partially deductible asset VAT replaces gross VAT on its supplier document", () => {
+  const allocations = buildFixedAssetDeductibleVatBySource(
+    [fixedAsset()],
+    [],
+    [],
+    [supplierInvoice()],
+    [],
+  );
+
+  assert.equal(allocations.get("supplier_invoice:supplier-1"), 500);
+});
+
+test("asset deductible VAT is allocated exactly across all attached source documents", () => {
+  const sources: FixedAssetSource[] = [
+    {
+      id: "source-1",
+      fixedAssetId: "asset-1",
+      sourceType: "supplier_invoice",
+      transactionId: null,
+      expenseItemId: null,
+      supplierInvoiceId: "supplier-1",
+      createdAt: "2026-01-02T00:00:00.000Z",
+    },
+    {
+      id: "source-2",
+      fixedAssetId: "asset-1",
+      sourceType: "transaction",
+      transactionId: "transaction-1",
+      expenseItemId: null,
+      supplierInvoiceId: null,
+      createdAt: "2026-01-02T00:00:00.000Z",
+    },
+  ];
+  const allocations = buildFixedAssetDeductibleVatBySource(
+    [fixedAsset({ supplierInvoiceId: null, vatAmountCents: 2001 })],
+    sources,
+    [transaction({ vatAmount: 10 })],
+    [supplierInvoice()],
+    [],
+  );
+
+  assert.equal(
+    (allocations.get("supplier_invoice:supplier-1") ?? 0)
+      + (allocations.get("transaction:transaction-1") ?? 0),
+    1001,
+  );
 });
 
 test("VAT credit above threshold stays carried and only becomes requestable", () => {

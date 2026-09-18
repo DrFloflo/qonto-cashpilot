@@ -138,7 +138,7 @@ export function VatFiscalSection({
           >
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-[11px] group-hover:text-foreground transition-colors flex items-center gap-1">
-                Produits comptabilisés HT ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
+                Produits HT ({selectedFiscalOffset === 0 ? "exercice en cours" : "exercice clôturé"})
                 <ChevronRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
               </span>
               <div className="p-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -149,11 +149,11 @@ export function VatFiscalSection({
               +{formatCurrency(summary?.totalRevenue ?? 0)}
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
-              <span>Réel : {formatCurrency(summary?.revenueReal ?? 0)}</span>
+              <span>Comptabilisés : {formatCurrency(summary?.revenueReal ?? 0)}</span>
               <span className="text-primary font-medium underline">Voir détail</span>
             </div>
             {selectedFiscalOffset === 0 && (
-              <div className="text-[10px] text-muted-foreground mt-0.5">Prévi : +{formatCurrency(summary?.revenueFuture ?? 0)}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">Prévisions incluses dans le total : +{formatCurrency(summary?.revenueFuture ?? 0)}</div>
             )}
           </button>
 
@@ -165,7 +165,7 @@ export function VatFiscalSection({
           >
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-[11px] group-hover:text-foreground transition-colors flex items-center gap-1">
-                Charges comptabilisées HT ({selectedFiscalOffset === 0 ? "exercice en cours" : "exercice clôturé"})
+                Charges HT ({selectedFiscalOffset === 0 ? "exercice en cours" : "exercice clôturé"})
                 <ChevronRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
               </span>
               <div className="p-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
@@ -176,15 +176,15 @@ export function VatFiscalSection({
               -{formatCurrency(summary?.totalExpenses ?? 0)}
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
-              <span>Réel : {formatCurrency(summary?.expensesReal ?? 0)}</span>
+              <span>Comptabilisées : {formatCurrency(summary?.expensesReal ?? 0)}</span>
               <span className="text-primary font-medium underline">Voir détail</span>
             </div>
             {selectedFiscalOffset === 0 && (
-              <div className="text-[10px] text-muted-foreground mt-0.5">Prévi : -{formatCurrency(summary?.expensesFuture ?? 0)}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">Prévisions incluses dans le total : -{formatCurrency(summary?.expensesFuture ?? 0)}</div>
             )}
           </button>
 
-          {/* This is not statutory net profit: tax, depreciation and adjustments are excluded. */}
+          {/* This is not statutory net profit: depreciation is included, but tax and other inventory entries are excluded. */}
           <div className="p-2.5 rounded-lg bg-background border border-border/60">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-[11px]">Solde d&apos;activité estimé HT</span>
@@ -209,7 +209,7 @@ export function VatFiscalSection({
               {formatCurrency(summary?.activityBalance ?? 0)}
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              Produits moins charges identifiés, hors impôts, amortissements et écritures de clôture
+              Produits moins charges identifiés, incluant les dotations aux amortissements, hors IS et autres écritures d’inventaire
             </div>
           </div>
         </div>

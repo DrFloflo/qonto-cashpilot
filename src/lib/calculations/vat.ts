@@ -93,6 +93,13 @@ export function computeVatForFiscalYear({
   const items: VatItem[] = [];
   let collectedRealCents = 0;
   let deductibleRealCents = 0;
+  const fixedAssetVatBySource = buildFixedAssetDeductibleVatBySource(
+    fixedAssets,
+    fixedAssetSources,
+    transactions,
+    supplierInvoices,
+    expenseItems,
+  );
 
   for (const invoice of customerInvoices) {
     const itemDate = getCustomerVatRecognitionDate(invoice, paymentMethod);
@@ -115,8 +122,11 @@ export function computeVatForFiscalYear({
     const itemDate = invoice.issueDate.slice(0, 10);
     if (!isAccountingDocument(invoice.status) || !isInFiscalYear(itemDate) || itemDate > todayStr) continue;
 
-    deductibleRealCents += toCents(invoice.totalVatAmount);
-    addVatItemIfPositive(items, invoice.totalVatAmount, {
+    const deductibleVatCents = fixedAssetVatBySource.get(sourceKey("supplier_invoice", invoice.id))
+      ?? toCents(invoice.totalVatAmount);
+    const deductibleVat = fromCents(deductibleVatCents);
+    deductibleRealCents += deductibleVatCents;
+    addVatItemIfPositive(items, deductibleVat, {
       id: invoice.id,
       source: "Facture Fournisseur (Comptabilisée)",
       label: `${invoice.supplierName} (${invoice.invoiceNumber || "N/A"})`,
@@ -135,7 +145,10 @@ export function computeVatForFiscalYear({
     const transactionDate = transaction.settledAt.slice(0, 10);
     if (!isInFiscalYear(transactionDate) || transactionDate > todayStr) continue;
 
-    const vatAmount = transaction.vatAmount ?? 0;
+    const vatAmount = fromCents(
+      fixedAssetVatBySource.get(sourceKey("transaction", transaction.id))
+        ?? toCents(transaction.vatAmount ?? 0),
+    );
     deductibleRealCents += toCents(vatAmount);
     items.push({
       id: transaction.id,
@@ -158,7 +171,10 @@ export function computeVatForFiscalYear({
       || expenseDate > todayStr
     ) continue;
 
-    deductibleRealCents += toCents(expense.vatDeductible);
+    const deductibleVatCents = fixedAssetVatBySource.get(sourceKey("expense_item", expense.id))
+      ?? toCents(expense.vatDeductible);
+    const deductibleVat = fromCents(deductibleVatCents);
+    deductibleRealCents += deductibleVatCents;
     items.push({
       id: expense.id,
       source: "Note de Frais",
@@ -167,7 +183,7 @@ export function computeVatForFiscalYear({
       type: "deductible",
       amountHt: getProfessionalExpenseHt(expense),
       vatRate: expense.vatRate,
-      vatAmount: expense.vatDeductible,
+      vatAmount: deductibleVat,
     });
   }
 
@@ -271,6 +287,67 @@ export function computeVatForFiscalYear({
       futureForecastFlowsVat: fromCents(manualInflowsVatCents - manualOutflowsVatCents),
     },
   };
+}
+
+type FixedAssetSourceType = "transaction" | "expense_item" | "supplier_invoice";
+
+/**
+ * Allocates each asset's actually deductible VAT across its attached supporting
+ * documents. The allocation is done in cents so the detail lines reconcile
+ * exactly with the deductible VAT calculated from the asset coefficient.
+ */
+export function buildFixedAssetDeductibleVatBySource(
+  fixedAssets: FixedAsset[],
+  fixedAssetSources: FixedAssetSource[],
+  transactions: Transaction[],
+  supplierInvoices: SupplierInvoice[],
+  expenseItems: ExpenseItem[],
+): Map<string, number> {
+  const transactionVat = new Map(transactions.map((item) => [item.id, toCents(item.vatAmount ?? 0)]));
+  const supplierInvoiceVat = new Map(supplierInvoices.map((item) => [item.id, toCents(item.totalVatAmount)]));
+  const expenseVat = new Map(expenseItems.map((item) => [item.id, toCents(item.vatDeductible)]));
+  const sourcesByAsset = new Map<string, Map<string, number>>();
+
+  const addSource = (assetId: string, type: FixedAssetSourceType, id: string | null, vatCents: number | undefined) => {
+    if (!id || !vatCents || vatCents <= 0) return;
+    const sources = sourcesByAsset.get(assetId) ?? new Map<string, number>();
+    sources.set(sourceKey(type, id), vatCents);
+    sourcesByAsset.set(assetId, sources);
+  };
+
+  for (const asset of fixedAssets) {
+    addSource(asset.id, "supplier_invoice", asset.supplierInvoiceId, supplierInvoiceVat.get(asset.supplierInvoiceId ?? ""));
+    addSource(asset.id, "transaction", asset.sourceTransactionId, transactionVat.get(asset.sourceTransactionId ?? ""));
+    addSource(asset.id, "expense_item", asset.sourceExpenseItemId, expenseVat.get(asset.sourceExpenseItemId ?? ""));
+  }
+  for (const source of fixedAssetSources) {
+    addSource(source.fixedAssetId, "supplier_invoice", source.supplierInvoiceId, supplierInvoiceVat.get(source.supplierInvoiceId ?? ""));
+    addSource(source.fixedAssetId, "transaction", source.transactionId, transactionVat.get(source.transactionId ?? ""));
+    addSource(source.fixedAssetId, "expense_item", source.expenseItemId, expenseVat.get(source.expenseItemId ?? ""));
+  }
+
+  const result = new Map<string, number>();
+  for (const asset of fixedAssets) {
+    if (asset.status === "draft") continue;
+    const sources = [...(sourcesByAsset.get(asset.id)?.entries() ?? [])];
+    const sourceVatCents = sources.reduce((sum, [, vatCents]) => sum + vatCents, 0);
+    if (sourceVatCents <= 0) continue;
+
+    const deductibleVatCents = Math.round(asset.vatAmountCents * asset.vatDeductibleRate / 100);
+    let allocatedCents = 0;
+    sources.forEach(([key, vatCents], index) => {
+      const allocation = index === sources.length - 1
+        ? deductibleVatCents - allocatedCents
+        : Math.round(deductibleVatCents * vatCents / sourceVatCents);
+      result.set(key, allocation);
+      allocatedCents += allocation;
+    });
+  }
+  return result;
+}
+
+function sourceKey(type: FixedAssetSourceType, id: string): string {
+  return `${type}:${id}`;
 }
 
 function addVatItemIfPositive(items: VatItem[], vatAmount: number, item: Omit<VatItem, "vatAmount">): void {
