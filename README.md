@@ -52,7 +52,11 @@ QONTO_API_KEY=votre_cle_api_secrete
 QONTO_ORGANIZATION_ID=votre_identifiant_organisation
 ```
 
-### 3. Lancer l'application
+### 3. Configuration de l’assistant financier (facultative)
+
+Copiez [`.env.example`](.env.example) vers un fichier local non versionné nommé `.env.local`, puis renseignez `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `FOUNDRY_AGENT_ID` et `FOUNDRY_MODEL_DEPLOYMENT`. L’intégration utilise le SDK officiel `openai` avec `AzureOpenAI` et l’API `2024-12-01-preview`. Sans ces valeurs, le dashboard fonctionne normalement et le panneau affiche « Assistant non configuré ».
+
+### 4. Lancer l'application
 
 ```bash
 npm run dev

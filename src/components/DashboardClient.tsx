@@ -12,6 +12,7 @@ import { VatFiscalSection } from "@/components/VatFiscalSection";
 import { DashboardDetailModal } from "@/components/DashboardDetailModal";
 import { ExpenseSection } from "@/components/ExpenseSection";
 import { FixedAssetsSection } from "@/components/FixedAssetsSection";
+import { FinancialAssistant } from "@/components/FinancialAssistant";
 import { syncAction } from "@/app/actions";
 import { Landmark, LayoutDashboard, Receipt } from "lucide-react";
 
@@ -197,6 +198,8 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           onSaved={handleDataUpdated}
         />
       )}
+
+      <FinancialAssistant />
     </div>
   );
 }
