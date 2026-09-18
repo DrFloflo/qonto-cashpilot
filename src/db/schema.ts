@@ -129,7 +129,8 @@ export const expenseItems = sqliteTable("expense_items", {
   date: text("date").notNull(), // YYYY-MM-DD
   label: text("label").notNull(),
 
-  // Financial values
+  // Financial values. amountTtc is the original receipt total while amountHt,
+  // vatDeductible and reimbursableAmount contain only the professional portion.
   amountTtc: real("amount_ttc").notNull(),
   amountHt: real("amount_ht").notNull(),
   vatRate: real("vat_rate").notNull().default(0), // e.g. 20, 10, 5.5, 0
@@ -137,7 +138,9 @@ export const expenseItems = sqliteTable("expense_items", {
 
   // Calculated values stored
   vatDeductible: real("vat_deductible").notNull().default(0),
-  reimbursableAmount: real("reimbursable_amount").notNull(), // TTC engagé au prorata
+  reimbursableAmount: real("reimbursable_amount").notNull(), // TTC professionnel engagé
+  accountingStatus: text("accounting_status").notNull().default("recognized"), // "recognized" | "canceled"
+  sourceTransactionId: text("source_transaction_id").references(() => transactions.id, { onDelete: "set null" }),
 
   // IK specific
   distanceKm: real("distance_km"),
@@ -158,6 +161,7 @@ export const expenseReimbursements = sqliteTable("expense_reimbursements", {
   amount: real("amount").notNull(),
   date: text("date").notNull(), // YYYY-MM-DD
   note: text("note"),
+  status: text("status").notNull().default("settled"), // settlement of collaborator liability
   createdAt: text("created_at").notNull(),
 });
 

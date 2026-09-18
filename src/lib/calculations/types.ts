@@ -3,11 +3,12 @@ import type { AppSettings, FutureFlow, Transaction } from "@/db/schema";
 export interface VatItem {
   id: string;
   source:
+    | "Facture Client (Comptabilisée)"
     | "Facture Client (Encaissée)"
-    | "Facture Fournisseur (Payée)"
-    | "Facture Client (À encaisser)"
-    | "Facture Fournisseur (À décaisser)"
-    | "Dépense / Transaction"
+    | "Facture Fournisseur (Comptabilisée)"
+    | "Facture Client (Prévision)"
+    | "Facture Fournisseur (Prévision)"
+    | "Transaction sans pièce identifiée"
     | "Note de Frais"
     | "Flux Futur";
   label: string;
@@ -39,7 +40,7 @@ export interface VatFiscalSummary {
   totalDeductible: number;
   openingVatCredit: number;
   rawBalance: number;
-  status: "due" | "credit_refundable" | "credit_carried_over";
+  status: "due" | "credit_eligible" | "credit_carried_over";
   statusLabel: string;
   threshold: number;
   vatToProvision: number;
@@ -51,7 +52,7 @@ export interface VatFiscalSummary {
   expensesReal: number;
   expensesFuture: number;
   totalExpenses: number;
-  netResult: number;
+  activityBalance: number;
 }
 
 export interface VatYearData {
@@ -165,13 +166,13 @@ export interface DashboardData {
     projected90d: number;
     projected12m: number;
     vatToProvision: number;
-    monthRevenue: number;
-    monthExpenses: number;
+    monthInflows: number;
+    monthOutflows: number;
     vatFiscalSummary: VatFiscalSummary;
     vatFiscalYears: VatYearData[];
     vatDetails: VatDetails;
-    monthRevenueItems: Transaction[];
-    monthExpenseItems: Transaction[];
+    monthInflowItems: Transaction[];
+    monthOutflowItems: Transaction[];
     vatProvisionItems: VatItem[];
   };
   projectionChart: ProjectionTimeframes & {

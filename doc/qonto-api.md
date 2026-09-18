@@ -80,10 +80,10 @@ URL de base : `https://thirdparty.qonto.com/v2`
 - **Scope OAuth** : `client_invoices.read`
 - **Paramètres recommandés** :
   - `exclude_imported=false` : Inclure toutes les factures, y compris importées.
-  - `per_page=100`
+  - `per_page=100` et `current_page` : toutes les pages sont parcourues jusqu'à `meta.next_page === null` / `meta.total_pages` (avec repli sur une page incomplète si `meta` manque).
 - **Statuts possibles** (`status`) :
-  - `paid` : Facture payée (impacte la TVA réelle collectée).
-  - `unpaid` : Facture validée en attente de paiement (impacte la trésorerie prévisionnelle à la date `due_date` et la TVA future à encaisser).
+  - `paid` : Facture payée. En TVA sur encaissements, `paid_at` est exigé pour reconnaître la TVA réelle ; en TVA sur les débits, la date d'émission est utilisée.
+  - `unpaid` : Facture validée en attente de paiement (impacte la trésorerie prévisionnelle à la date `due_date`; sa TVA est prévisionnelle uniquement en base encaissements).
   - `canceled` : Facture annulée (ignorée dans les projections).
   - `draft` : Facture brouillon.
 - **Structure des montants dans l'API** :
@@ -98,10 +98,11 @@ URL de base : `https://thirdparty.qonto.com/v2`
 
 - **Méthode** : `GET`
 - **Route** : `/v2/supplier_invoices`
-- **Description** : Récupère les factures de vos prestataires et fournisseurs saisies ou importées dans Qonto.
+- **Description** : Récupère les factures de vos prestataires et fournisseurs saisies ou importées dans Qonto. La synchronisation parcourt aussi `per_page=100` / `current_page` jusqu'à la dernière page.
 - **Utilisation dans Qonto Prévi** :
-  - Si `status == "paid"` : TVA réelle décaissée (TVA déductible réelle).
-  - Si `status == "unpaid"` : Décaissement prévisionnel à `due_date` et TVA future à déduire.
+  - Une facture non annulée est une pièce comptable HT et TVA à sa date d'émission ; son règlement est un flux de trésorerie, pas une seconde charge.
+  - Une facture non réglée produit un décaissement prévisionnel à `due_date`.
+  - Une transaction porteuse de TVA est exclue si un identifiant de transaction est fourni par la facture ou, à défaut, si date de paiement, montant TTC et fournisseur concordent strictement. Ce rapprochement conservateur ne constitue pas un lettrage exhaustif.
 
 ---
 

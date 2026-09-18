@@ -2,10 +2,19 @@ import type {
   AppSettings,
   CustomerInvoice,
   ExpenseItem,
+  ExpenseReimbursement,
   SupplierInvoice,
   Transaction,
 } from "@/db/schema";
 import { format } from "date-fns";
+import {
+  calculateAccountingActivity,
+  getCustomerVatRecognitionDate,
+  getProfessionalExpenseHt,
+  getStandaloneVatTransactions,
+  isAccountingDocument,
+  toCents,
+} from "./accounting";
 import { getFiscalYearBounds } from "./fiscal-year";
 import { isOutstanding } from "./flows";
 import type {
@@ -24,6 +33,7 @@ interface VatCalculationInput {
   customerInvoices: CustomerInvoice[];
   supplierInvoices: SupplierInvoice[];
   expenseItems: ExpenseItem[];
+  reimbursements: ExpenseReimbursement[];
   collaboratorNames: Map<string, string>;
   manualFlows: ExpandedFlow[];
   offsetYears?: number;
@@ -44,6 +54,7 @@ export function computeVatForFiscalYear({
   customerInvoices,
   supplierInvoices,
   expenseItems,
+  reimbursements,
   collaboratorNames,
   manualFlows,
   offsetYears = 0,
@@ -55,6 +66,7 @@ export function computeVatForFiscalYear({
     settings.fiscalYearEndMonth,
     offsetYears,
   );
+  const paymentMethod = settings.vatPaymentMethod as FiscalYearInfo["paymentMethod"];
   const fiscalYear: FiscalYearInfo = {
     endDay: settings.fiscalYearEndDay,
     endMonth: settings.fiscalYearEndMonth,
@@ -63,22 +75,23 @@ export function computeVatForFiscalYear({
     label: `Exercice fiscal du ${format(bounds.startDate, "dd/MM/yyyy")} au ${format(bounds.endDate, "dd/MM/yyyy")}`,
     regime: settings.vatRegime as FiscalYearInfo["regime"],
     regimeLabel: REGIME_LABELS[settings.vatRegime] || "Régime Réel Normal",
-    paymentMethod: settings.vatPaymentMethod as FiscalYearInfo["paymentMethod"],
+    paymentMethod,
   };
-  const isInFiscalYear = (date: string) => date >= bounds.startDateStr && date <= bounds.endDateStr;
-  const isFutureInFiscalYear = (date: string) => date >= todayStr && isInFiscalYear(date);
+  const period = { startDate: bounds.startDateStr, endDate: bounds.endDateStr };
+  const isInFiscalYear = (date: string) => date >= period.startDate && date <= period.endDate;
+  const isFutureInFiscalYear = (date: string) => date > todayStr && isInFiscalYear(date);
   const items: VatItem[] = [];
+  let collectedRealCents = 0;
+  let deductibleRealCents = 0;
 
-  let collectedReal = 0;
   for (const invoice of customerInvoices) {
-    if (invoice.status !== "paid") continue;
-    const itemDate = (invoice.paidAt || invoice.issueDate).slice(0, 10);
-    if (!isInFiscalYear(itemDate)) continue;
+    const itemDate = getCustomerVatRecognitionDate(invoice, paymentMethod);
+    if (!itemDate || !isInFiscalYear(itemDate) || itemDate > todayStr) continue;
 
-    collectedReal += invoice.totalVatAmount;
+    collectedRealCents += toCents(invoice.totalVatAmount);
     addVatItemIfPositive(items, invoice.totalVatAmount, {
       id: invoice.id,
-      source: "Facture Client (Encaissée)",
+      source: paymentMethod === "debits" ? "Facture Client (Comptabilisée)" : "Facture Client (Encaissée)",
       label: `${invoice.clientName} (${invoice.invoiceNumber})`,
       date: itemDate,
       type: "collectee",
@@ -86,16 +99,16 @@ export function computeVatForFiscalYear({
     });
   }
 
-  let deductibleReal = 0;
+  // Supplier VAT is sourced from the document on its effective date. Bank VAT
+  // is retained only where no supplier document can be identified.
   for (const invoice of supplierInvoices) {
-    if (invoice.status !== "paid") continue;
-    const itemDate = (invoice.paidAt || invoice.issueDate).slice(0, 10);
-    if (!isInFiscalYear(itemDate)) continue;
+    const itemDate = invoice.issueDate.slice(0, 10);
+    if (!isAccountingDocument(invoice.status) || !isInFiscalYear(itemDate) || itemDate > todayStr) continue;
 
-    deductibleReal += invoice.totalVatAmount;
+    deductibleRealCents += toCents(invoice.totalVatAmount);
     addVatItemIfPositive(items, invoice.totalVatAmount, {
       id: invoice.id,
-      source: "Facture Fournisseur (Payée)",
+      source: "Facture Fournisseur (Comptabilisée)",
       label: `${invoice.supplierName} (${invoice.invoiceNumber || "N/A"})`,
       date: itemDate,
       type: "deductible",
@@ -103,78 +116,76 @@ export function computeVatForFiscalYear({
     });
   }
 
-  for (const transaction of transactions) {
-    if (transaction.side !== "debit" || !transaction.vatAmount || transaction.vatAmount <= 0) continue;
+  for (const transaction of getStandaloneVatTransactions(
+    transactions,
+    supplierInvoices,
+    reimbursements,
+    expenseItems,
+  )) {
     const transactionDate = transaction.settledAt.slice(0, 10);
-    if (!isInFiscalYear(transactionDate)) continue;
+    if (!isInFiscalYear(transactionDate) || transactionDate > todayStr) continue;
 
-    deductibleReal += transaction.vatAmount;
+    const vatAmount = transaction.vatAmount ?? 0;
+    deductibleRealCents += toCents(vatAmount);
     items.push({
       id: transaction.id,
-      source: "Dépense / Transaction",
+      source: "Transaction sans pièce identifiée",
       label: transaction.label,
       date: transactionDate,
       type: "deductible",
-      amountHt: Math.max(0, Math.abs(transaction.amount) - transaction.vatAmount),
-      vatAmount: transaction.vatAmount,
+      amountHt: Math.max(0, Math.abs(transaction.amount) - vatAmount),
+      vatAmount,
     });
   }
 
   for (const expense of expenseItems) {
     const expenseDate = expense.date.slice(0, 10);
-    if (expense.type !== "ndf" || expense.vatDeductible <= 0 || !isInFiscalYear(expenseDate)) continue;
+    if (
+      expense.accountingStatus === "canceled"
+      || expense.type !== "ndf"
+      || expense.vatDeductible <= 0
+      || !isInFiscalYear(expenseDate)
+      || expenseDate > todayStr
+    ) continue;
 
-    deductibleReal += expense.vatDeductible;
+    deductibleRealCents += toCents(expense.vatDeductible);
     items.push({
       id: expense.id,
       source: "Note de Frais",
       label: `${collaboratorNames.get(expense.collaboratorId) || "Collaborateur"} - ${expense.label}`,
       date: expenseDate,
       type: "deductible",
-      amountHt: expense.amountHt,
+      amountHt: getProfessionalExpenseHt(expense),
       vatRate: expense.vatRate,
       vatAmount: expense.vatDeductible,
     });
   }
 
-  let futureToCollect = 0;
-  for (const invoice of customerInvoices) {
-    const dueDate = (invoice.dueDate || invoice.issueDate).slice(0, 10);
-    if (!isOutstanding(invoice.status) || !isFutureInFiscalYear(dueDate)) continue;
-
-    futureToCollect += invoice.totalVatAmount;
-    addVatItemIfPositive(items, invoice.totalVatAmount, {
-      id: invoice.id,
-      source: "Facture Client (À encaisser)",
-      label: `${invoice.clientName} (${invoice.invoiceNumber})`,
-      date: dueDate,
-      type: "collectee",
-      amountHt: invoice.totalAmountHt,
-    });
-  }
-
-  let futureToDeduct = 0;
-  for (const invoice of supplierInvoices) {
-    const dueDate = (invoice.dueDate || invoice.issueDate).slice(0, 10);
-    if (!isOutstanding(invoice.status) || !isFutureInFiscalYear(dueDate)) continue;
-
-    futureToDeduct += invoice.totalVatAmount;
-    addVatItemIfPositive(items, invoice.totalVatAmount, {
-      id: invoice.id,
-      source: "Facture Fournisseur (À décaisser)",
-      label: `${invoice.supplierName} (${invoice.invoiceNumber || "N/A"})`,
-      date: dueDate,
-      type: "deductible",
-      amountHt: invoice.totalAmountHt,
-    });
+  let futureToCollectCents = 0;
+  // On collection basis, an unpaid invoice is forecast VAT at expected receipt.
+  // On debit basis it is already actual VAT at issue date and must not reappear.
+  if (paymentMethod === "encaissements") {
+    for (const invoice of customerInvoices) {
+      const dueDate = (invoice.dueDate || invoice.issueDate).slice(0, 10);
+      if (!isOutstanding(invoice.status) || !isFutureInFiscalYear(dueDate)) continue;
+      futureToCollectCents += toCents(invoice.totalVatAmount);
+      addVatItemIfPositive(items, invoice.totalVatAmount, {
+        id: `forecast-customer-${invoice.id}`,
+        source: "Facture Client (Prévision)",
+        label: `${invoice.clientName} (${invoice.invoiceNumber})`,
+        date: dueDate,
+        type: "collectee",
+        amountHt: invoice.totalAmountHt,
+      });
+    }
   }
 
   const fiscalFutureFlows = manualFlows.filter((flow) => isFutureInFiscalYear(flow.date));
-  let futureForecastFlowsVat = 0;
+  const manualInflowsVatCents = sumFlowCents(fiscalFutureFlows, "inflow", "vatAmount");
+  const manualOutflowsVatCents = sumFlowCents(fiscalFutureFlows, "outflow", "vatAmount");
   for (const flow of fiscalFutureFlows) {
-    futureForecastFlowsVat += flow.type === "inflow" ? flow.vatAmount : -flow.vatAmount;
     addVatItemIfPositive(items, flow.vatAmount, {
-      id: `future-${flow.label}-${flow.date}`,
+      id: `future-${flow.id}-${flow.date}`,
       source: "Flux Futur",
       label: flow.label,
       date: flow.date,
@@ -184,88 +195,79 @@ export function computeVatForFiscalYear({
   }
   items.sort((a, b) => b.date.localeCompare(a.date));
 
-  const manualInflowsVat = sumFlows(fiscalFutureFlows, "inflow", "vatAmount");
-  const manualOutflowsVat = sumFlows(fiscalFutureFlows, "outflow", "vatAmount");
-  const totalCollected = collectedReal + futureToCollect + manualInflowsVat;
-  const totalDeductible = deductibleReal + futureToDeduct + manualOutflowsVat;
-  const normalizedOpeningVatCredit = roundCurrency(Math.max(0, openingVatCredit));
-  const rawBalance = roundCurrency(totalCollected - totalDeductible - normalizedOpeningVatCredit);
-
-  let revenueReal = 0;
-  let expensesReal = 0;
-  for (const transaction of transactions) {
-    if (!isInFiscalYear(transaction.settledAt.slice(0, 10))) continue;
-    if (transaction.side === "credit" || transaction.amount > 0) revenueReal += Math.abs(transaction.amount);
-    else expensesReal += Math.abs(transaction.amount);
-  }
-
-  let revenueFuture = customerInvoices
-    .filter((invoice) => isOutstanding(invoice.status) && isFutureInFiscalYear((invoice.dueDate || invoice.issueDate).slice(0, 10)))
-    .reduce((total, invoice) => total + invoice.totalAmountTtc, 0);
-  let expensesFuture = supplierInvoices
-    .filter((invoice) => isOutstanding(invoice.status) && isFutureInFiscalYear((invoice.dueDate || invoice.issueDate).slice(0, 10)))
-    .reduce((total, invoice) => total + invoice.totalAmountTtc, 0);
-  revenueFuture += sumFlows(fiscalFutureFlows, "inflow", "amountTtc");
-  expensesFuture += sumFlows(fiscalFutureFlows, "outflow", "amountTtc");
-
+  const collectedReal = fromCents(collectedRealCents);
+  const deductibleReal = fromCents(deductibleRealCents);
+  const collectedFuture = fromCents(futureToCollectCents + manualInflowsVatCents);
+  const deductibleFuture = fromCents(manualOutflowsVatCents);
+  const normalizedOpeningVatCredit = fromCents(Math.max(0, toCents(openingVatCredit)));
+  // The payable/provision amount intentionally excludes every forecast source.
+  const rawBalance = roundCurrency(collectedReal - deductibleReal - normalizedOpeningVatCredit);
   const threshold = settings.vatRegime === "simplified" ? 150 : 760;
   const balanceStatus = getBalanceStatus(rawBalance, threshold);
-  const totalRevenue = roundCurrency(revenueReal + revenueFuture);
-  const totalExpenses = roundCurrency(expensesReal + expensesFuture);
+  const accountingActivity = calculateAccountingActivity(
+    period,
+    customerInvoices,
+    supplierInvoices,
+    expenseItems,
+  );
+  const revenueFuture = sumFlowCents(fiscalFutureFlows, "inflow", "amountHt") / 100;
+  const expensesFuture = sumFlowCents(fiscalFutureFlows, "outflow", "amountHt") / 100;
+  const totalRevenue = roundCurrency(accountingActivity.revenueHt + revenueFuture);
+  const totalExpenses = roundCurrency(accountingActivity.expensesHt + expensesFuture);
   const summary: VatFiscalSummary = {
     fiscalYear,
-    collectedReal: roundCurrency(collectedReal),
-    collectedFuture: roundCurrency(futureToCollect + manualInflowsVat),
-    totalCollected: roundCurrency(totalCollected),
-    deductibleReal: roundCurrency(deductibleReal),
-    deductibleFuture: roundCurrency(futureToDeduct + manualOutflowsVat),
-    totalDeductible: roundCurrency(totalDeductible),
+    collectedReal,
+    collectedFuture,
+    totalCollected: roundCurrency(collectedReal + collectedFuture),
+    deductibleReal,
+    deductibleFuture,
+    totalDeductible: roundCurrency(deductibleReal + deductibleFuture),
     openingVatCredit: normalizedOpeningVatCredit,
     rawBalance,
     ...balanceStatus,
     threshold,
-    revenueReal: roundCurrency(revenueReal),
-    revenueFuture: roundCurrency(revenueFuture),
+    revenueReal: accountingActivity.revenueHt,
+    revenueFuture,
     totalRevenue,
-    expensesReal: roundCurrency(expensesReal),
-    expensesFuture: roundCurrency(expensesFuture),
+    expensesReal: accountingActivity.expensesHt,
+    expensesFuture,
     totalExpenses,
-    netResult: roundCurrency(totalRevenue - totalExpenses),
+    activityBalance: roundCurrency(totalRevenue - totalExpenses),
   };
 
   return {
     summary,
     items,
     details: {
-      collectedReal: roundCurrency(collectedReal),
-      deductibleReal: roundCurrency(deductibleReal),
-      futureToCollect: roundCurrency(futureToCollect),
-      futureToDeduct: roundCurrency(futureToDeduct),
-      futureForecastFlowsVat: roundCurrency(futureForecastFlowsVat),
+      collectedReal,
+      deductibleReal,
+      futureToCollect: fromCents(futureToCollectCents),
+      futureToDeduct: 0,
+      futureForecastFlowsVat: fromCents(manualInflowsVatCents - manualOutflowsVatCents),
     },
   };
 }
 
 function addVatItemIfPositive(items: VatItem[], vatAmount: number, item: Omit<VatItem, "vatAmount">): void {
-  if (vatAmount > 0) items.push({ ...item, vatAmount });
+  if (vatAmount > 0) items.push({ ...item, vatAmount: roundCurrency(vatAmount) });
 }
 
-function sumFlows(
+function sumFlowCents(
   flows: ExpandedFlow[],
   type: ExpandedFlow["type"],
-  field: "vatAmount" | "amountTtc",
+  field: "vatAmount" | "amountHt",
 ): number {
-  return flows.filter((flow) => flow.type === type).reduce((total, flow) => total + flow[field], 0);
+  return flows.filter((flow) => flow.type === type).reduce((total, flow) => total + toCents(flow[field]), 0);
 }
 
-function getBalanceStatus(rawBalance: number, threshold: number): Pick<
+export function getBalanceStatus(rawBalance: number, threshold: number): Pick<
   VatFiscalSummary,
   "status" | "statusLabel" | "vatToProvision" | "refundableVat" | "carriedOverVat"
 > {
   if (rawBalance > 0) {
     return {
       status: "due",
-      statusLabel: "TVA nette à décaisser / provisionner",
+      statusLabel: "TVA réelle nette à décaisser / provisionner",
       vatToProvision: rawBalance,
       refundableVat: 0,
       carriedOverVat: 0,
@@ -273,28 +275,23 @@ function getBalanceStatus(rawBalance: number, threshold: number): Pick<
   }
 
   if (rawBalance < 0) {
-    const credit = Math.abs(rawBalance);
-    if (credit >= threshold) {
-      return {
-        status: "credit_refundable",
-        statusLabel: `Crédit de TVA considéré comme remboursé (≥ ${threshold} €)`,
-        vatToProvision: 0,
-        refundableVat: roundCurrency(credit),
-        carriedOverVat: 0,
-      };
-    }
+    const credit = roundCurrency(Math.abs(rawBalance));
     return {
-      status: "credit_carried_over",
-      statusLabel: `Crédit reporté (inférieur au seuil de ${threshold} €)`,
+      status: credit >= threshold ? "credit_eligible" : "credit_carried_over",
+      statusLabel: credit >= threshold
+        ? `Crédit éligible à une demande de remboursement (non demandée automatiquement, seuil ${threshold} €)`
+        : `Crédit à reporter (seuil indicatif de demande ${threshold} €)`,
       vatToProvision: 0,
-      refundableVat: 0,
-      carriedOverVat: roundCurrency(credit),
+      refundableVat: credit >= threshold ? credit : 0,
+      // No explicit reimbursement workflow exists, so the full credit is
+      // carried into the following fiscal estimate even when requestable.
+      carriedOverVat: credit,
     };
   }
 
   return {
     status: "due",
-    statusLabel: "TVA équilibrée (0,00 €)",
+    statusLabel: "TVA réelle équilibrée (0,00 €)",
     vatToProvision: 0,
     refundableVat: 0,
     carriedOverVat: 0,
@@ -303,4 +300,8 @@ function getBalanceStatus(rawBalance: number, threshold: number): Pick<
 
 function roundCurrency(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function fromCents(value: number): number {
+  return value / 100;
 }

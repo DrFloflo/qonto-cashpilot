@@ -66,8 +66,8 @@ export function DashboardKpiCards({ kpis, onOpenModal }: DashboardKpiCardsProps)
       >
         <div className="flex items-center justify-between text-muted-foreground mb-2">
           <span className="text-xs font-medium uppercase tracking-wider group-hover:text-foreground transition-colors flex items-center gap-1">
-            {vatFiscalSummary?.status === "credit_refundable"
-              ? "Crédit TVA Remboursable"
+            {vatFiscalSummary?.status === "credit_eligible"
+              ? "Crédit TVA Éligible"
               : vatFiscalSummary?.status === "credit_carried_over"
               ? "Crédit TVA Reporté"
               : "TVA à Provisionner"}
@@ -75,7 +75,7 @@ export function DashboardKpiCards({ kpis, onOpenModal }: DashboardKpiCardsProps)
           </span>
           <div
             className={`p-1.5 rounded-md ${
-              vatFiscalSummary?.status === "credit_refundable"
+              vatFiscalSummary?.status === "credit_eligible"
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 : vatFiscalSummary?.status === "credit_carried_over"
                 ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
@@ -87,14 +87,14 @@ export function DashboardKpiCards({ kpis, onOpenModal }: DashboardKpiCardsProps)
         </div>
         <div
           className={`text-2xl font-bold tracking-tight ${
-            vatFiscalSummary?.status === "credit_refundable"
+            vatFiscalSummary?.status === "credit_eligible"
               ? "text-emerald-600 dark:text-emerald-400"
               : vatFiscalSummary?.status === "credit_carried_over"
               ? "text-blue-600 dark:text-blue-400"
               : "text-amber-600 dark:text-amber-400"
           }`}
         >
-          {vatFiscalSummary?.status === "credit_refundable"
+          {vatFiscalSummary?.status === "credit_eligible"
             ? `-${formatCurrency(vatFiscalSummary.refundableVat)}`
             : vatFiscalSummary?.status === "credit_carried_over"
             ? formatCurrency(vatFiscalSummary.carriedOverVat)
@@ -104,22 +104,22 @@ export function DashboardKpiCards({ kpis, onOpenModal }: DashboardKpiCardsProps)
           <span className="truncate max-w-[160px]" title={vatFiscalSummary?.statusLabel || "Solde exercice fiscal"}>
             {vatFiscalSummary?.status === "credit_carried_over"
               ? `Reporté (< ${vatFiscalSummary.threshold} €)`
-              : vatFiscalSummary?.status === "credit_refundable"
-              ? `Remboursable (≥ ${vatFiscalSummary.threshold} €)`
-              : "Exercice fiscal en cours"}
+              : vatFiscalSummary?.status === "credit_eligible"
+              ? `Demande possible (≥ ${vatFiscalSummary.threshold} €)`
+              : "TVA réelle de l'exercice"}
           </span>
           <span className="text-primary font-medium underline text-[10px]">Voir détail</span>
         </p>
       </div>
 
-      {/* Card 4: CA du Mois (Interactive clickable) */}
+      {/* Card 4: Encaissements bancaires du mois */}
       <div
         onClick={() => onOpenModal("revenue")}
         className="rounded-xl border border-border bg-card p-4 shadow-xs hover:border-emerald-500/50 hover:shadow-sm transition-all cursor-pointer group"
       >
         <div className="flex items-center justify-between text-muted-foreground mb-2">
           <span className="text-xs font-medium uppercase tracking-wider group-hover:text-foreground transition-colors flex items-center gap-1">
-            CA du Mois
+            Encaissements du mois
             <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
           </span>
           <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -127,22 +127,22 @@ export function DashboardKpiCards({ kpis, onOpenModal }: DashboardKpiCardsProps)
           </div>
         </div>
         <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 tracking-tight">
-          {formatCurrency(kpis.monthRevenue)}
+          {formatCurrency(kpis.monthInflows)}
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center justify-between">
-          <span>{kpis.monthRevenueItems.length} encaissement(s) ce mois</span>
+          <span>{kpis.monthInflowItems.length} mouvement(s) bancaire(s)</span>
           <span className="text-primary font-medium underline text-[10px]">Voir détail</span>
         </p>
       </div>
 
-      {/* Card 5: Charges du Mois (Interactive clickable) */}
+      {/* Card 5: Décaissements bancaires du mois */}
       <div
         onClick={() => onOpenModal("expenses")}
         className="rounded-xl border border-border bg-card p-4 shadow-xs hover:border-rose-500/50 hover:shadow-sm transition-all cursor-pointer group"
       >
         <div className="flex items-center justify-between text-muted-foreground mb-2">
           <span className="text-xs font-medium uppercase tracking-wider group-hover:text-foreground transition-colors flex items-center gap-1">
-            Charges du Mois
+            Décaissements du mois
             <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
           </span>
           <div className="p-1.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400">
@@ -150,10 +150,10 @@ export function DashboardKpiCards({ kpis, onOpenModal }: DashboardKpiCardsProps)
           </div>
         </div>
         <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 tracking-tight">
-          {formatCurrency(kpis.monthExpenses)}
+          {formatCurrency(kpis.monthOutflows)}
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center justify-between">
-          <span>{kpis.monthExpenseItems.length} décaissement(s) ce mois</span>
+          <span>{kpis.monthOutflowItems.length} mouvement(s) bancaire(s)</span>
           <span className="text-primary font-medium underline text-[10px]">Voir détail</span>
         </p>
       </div>

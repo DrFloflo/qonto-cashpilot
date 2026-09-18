@@ -6,12 +6,16 @@ Application web locale moderne, sobre et minimaliste permettant de piloter la tr
 
 - **Trésorerie Actuelle** : Solde en temps réel du compte bancaire Qonto.
 - **Trésorerie Projetée** : Modélisation à 30 jours, 60 jours, 90 jours et 12 mois prenant en compte les factures clients/fournisseurs et les flux futurs.
-- **TVA à Provisionner sur l'Exercice Fiscal & Règles Fiscales Françaises** :
+- **Estimation annuelle de TVA** :
   - Calcul dynamique calé sur les bornes de l'exercice fiscal en cours (date de clôture configurable, ex: 31/12 ou exercice décalé).
-  - Prise en compte du régime fiscal sélectionné : **Régime Réel Normal** (mensuel ou trimestriel) ou **Régime Réel Simplifié** (RSI).
-  - Gestion des seuils légaux français de remboursement de crédit de TVA : seuil légal de **760 €** en régime normal (CGI annexe II art. 242-0 A) au-delà duquel le crédit est remboursable (sinon automatiquement reporté sur la période suivante), et seuil annuel de **150 €** sur la CA12 en régime simplifié.
+  - TVA client reconnue à l'émission en option « débits », ou à `paidAt` en option « encaissements ». Une facture indiquée payée sans `paidAt` n'est pas supposée encaissée.
+  - TVA fournisseur issue en priorité des factures, complétée par les transactions sans pièce identifiable ; le rapprochement de secours est volontairement strict (identifiant Qonto, ou montant TTC + date de paiement + fournisseur).
+  - La TVA réelle payable/provisionnée exclut les factures et flux futurs, affichés séparément. Le calendrier déclaratif mensuel, trimestriel ou RSI n'est pas simulé : la vue demeure une estimation annuelle.
+  - Un crédit dépassant le seuil est indiqué comme éligible à une demande, jamais comme automatiquement remboursé. Sans statut explicite de remboursement, il reste reporté sur l'exercice suivant.
 - **Paramètres Fiscaux Configurables** : Bouton engrenage dans le bandeau de navigation pour configurer le jour/mois de fin d'exercice fiscal, le régime de TVA et la méthode d'exigibilité (débits ou encaissements).
-- **CA & Charges du mois** : Suivi des encaissements et décaissements réels du mois en cours avec modales de drill-down détaillées au clic.
+- **Encaissements & Décaissements du mois** : flux bancaires TTC du mois, sans les présenter comme du chiffre d'affaires ou des charges comptables.
+- **Activité comptable HT** : produits réalisés issus des factures clients à leur date d'émission, charges réalisées issues des factures fournisseurs et de la part professionnelle des notes de frais à leur date effective. Les prévisions HT restent séparées.
+- **Notes de frais** : le TTC du justificatif est conservé pour audit ; seuls le HT professionnel, la TVA déductible professionnelle et le montant remboursable proratisés sont comptabilisés. Le remboursement et son débit Qonto règlent la dette collaborateur sans recréer de charge ni de TVA, tout en restant visibles en trésorerie.
 - **Graphique interactif Évolution & Projection** (Recharts) :
   - Période de réel configurable (7j, 14j, 30j, 90j) et projection configurable (30j, 60j, 90j, 12 mois).
   - Granularité journalière continue sur tous les horizons pour garantir qu'aucune opération future ne soit masquée.
@@ -24,7 +28,7 @@ Application web locale moderne, sobre et minimaliste permettant de piloter la tr
   - Chaque flux peut être activé ou désactivé. Un flux désactivé reste visible, conserve la préférence de l'utilisateur après une nouvelle détection et n'est plus inclus dans les projections de trésorerie ni dans les calculs de TVA.
   - Les détections devenues obsolètes sont retirées automatiquement lorsqu'elles ne correspondent plus à deux opérations éligibles dans la fenêtre glissante des deux derniers mois.
   - La suppression directe d'un flux automatique n'est pas persistante tant que ses transactions sources restent éligibles : il sera recréé lors de l'analyse suivante. Utilisez donc la désactivation pour l'exclure durablement des prévisions.
-- **Synchronisation automatique et paginée Qonto** : Récupération idempotente et paginée (gestion multi-pages au-delà des 100 transactions par défaut) du solde, des transactions, des factures clients et des factures fournisseurs via l'API Qonto v2.
+- **Synchronisation automatique et paginée Qonto** : Récupération idempotente multi-pages (`meta.next_page` / `meta.total_pages`, avec repli sur la taille de page) du solde, des transactions, des factures clients et des factures fournisseurs via l'API Qonto v2.
 - **Base de données embarquée** : SQLite local avec Drizzle ORM (`./data/previ.db`), sans aucun serveur de base de données externe à installer.
 
 ## 📚 Documentation API
@@ -55,6 +59,13 @@ npm run dev
 ```
 
 Rendez-vous sur [http://localhost:3000](http://localhost:3000) et cliquez sur **Synchroniser Qonto**.
+
+## Principes de lecture comptable
+
+- Les graphiques et cartes de trésorerie sont cash-based et affichent des montants TTC réellement encaissés/décaissés ou projetés.
+- Les métriques d'activité sont document-based et HT. Le « solde d'activité estimé » n'est pas un résultat net : impôt, amortissements, provisions et écritures de clôture ne sont pas modélisés.
+- Les flux récurrents sont retirés d'une projection lorsqu'une facture ouverte du même sens, de la même date et du même montant TTC existe. Le rapprochement est conservateur et ne remplace pas un lettrage comptable complet.
+- La migration SQLite est additive : les champs de statut/lien sont ajoutés avec des valeurs par défaut et aucune donnée historique n'est supprimée. Les anciennes notes de frais proratisées sont interprétées à partir du TTC professionnel remboursable moins leur TVA déductible.
 
 ## 🔁 Fonctionnement de la détection des récurrences
 

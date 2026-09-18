@@ -5,6 +5,7 @@ import {
   collaborators,
   customerInvoices,
   expenseItems,
+  expenseReimbursements,
   futureFlows,
   supplierInvoices,
   syncStates,
@@ -58,6 +59,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const allSettings = db.select().from(appSettings).all();
   const allCollaborators = db.select().from(collaborators).all();
   const allExpenseItems = db.select().from(expenseItems).all();
+  const allExpenseReimbursements = db.select().from(expenseReimbursements).all();
 
   const settings = allSettings[0] || DEFAULT_SETTINGS();
   const account = allAccounts[0] || {
@@ -96,6 +98,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     customerInvoices: allCustomerInvoices,
     supplierInvoices: allSupplierInvoices,
     expenseItems: allExpenseItems,
+    reimbursements: allExpenseReimbursements,
     collaboratorNames,
     manualFlows,
   };
@@ -200,13 +203,13 @@ export async function getDashboardData(): Promise<DashboardData> {
       projected90d: projectedAt(90),
       projected12m: projectedAt(365),
       vatToProvision: currentVat.summary.vatToProvision,
-      monthRevenue: monthly.revenue,
-      monthExpenses: monthly.expenses,
+      monthInflows: monthly.inflows,
+      monthOutflows: monthly.outflows,
       vatFiscalSummary: currentVat.summary,
       vatFiscalYears,
       vatDetails: currentVat.details,
-      monthRevenueItems: monthly.revenueItems,
-      monthExpenseItems: monthly.expenseItems,
+      monthInflowItems: monthly.inflowItems,
+      monthOutflowItems: monthly.outflowItems,
       vatProvisionItems: currentVat.items,
     },
     projectionChart: {

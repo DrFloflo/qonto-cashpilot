@@ -52,13 +52,13 @@ export function buildFutureEvents(
   supplierInvoiceRows: SupplierInvoice[],
   todayStr: string,
 ): ExpandedFlow[] {
-  const events = [...manualExpanded];
+  const invoiceCandidates: ExpandedFlow[] = [];
   const overdueInvoiceDate = addDays(parseISO(todayStr), 14).toISOString().split("T")[0];
 
   for (const invoice of customerInvoiceRows) {
     if (isOutstanding(invoice.status)) {
       const dueDate = invoice.dueDate || todayStr;
-      events.push({
+      invoiceCandidates.push({
         id: invoice.id,
         date: dueDate < todayStr ? overdueInvoiceDate : dueDate,
         type: "inflow",
@@ -78,7 +78,7 @@ export function buildFutureEvents(
   for (const invoice of supplierInvoiceRows) {
     if (isOutstanding(invoice.status)) {
       const dueDate = invoice.dueDate || todayStr;
-      events.push({
+      invoiceCandidates.push({
         id: invoice.id,
         date: dueDate < todayStr ? overdueInvoiceDate : dueDate,
         type: "outflow",
@@ -95,7 +95,16 @@ export function buildFutureEvents(
     }
   }
 
-  return events;
+  // Prefer invoice events over a same-side, same-day and same-amount generic
+  // recurrence. This conservative safeguard avoids obvious double projections
+  // without hiding unrelated recurring flows solely because labels are similar.
+  const deduplicatedManual = manualExpanded.filter((flow) => !invoiceCandidates.some((invoice) =>
+    invoice.type === flow.type
+    && invoice.date === flow.date
+    && Math.abs(Math.round(invoice.amountTtc * 100) - Math.round(flow.amountTtc * 100)) <= 1,
+  ));
+
+  return [...deduplicatedManual, ...invoiceCandidates];
 }
 
 export function isOutstanding(status: string): boolean {

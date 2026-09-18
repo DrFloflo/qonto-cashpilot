@@ -121,6 +121,8 @@ sqlite.exec(`
     prorata_rate REAL NOT NULL DEFAULT 100,
     vat_deductible REAL NOT NULL DEFAULT 0,
     reimbursable_amount REAL NOT NULL,
+    accounting_status TEXT NOT NULL DEFAULT 'recognized',
+    source_transaction_id TEXT REFERENCES transactions(id) ON DELETE SET NULL,
     distance_km REAL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -133,6 +135,7 @@ sqlite.exec(`
     amount REAL NOT NULL,
     date TEXT NOT NULL,
     note TEXT,
+    status TEXT NOT NULL DEFAULT 'settled',
     created_at TEXT NOT NULL
   );
 `);
@@ -171,10 +174,32 @@ for (const migration of futureFlowMigrations) {
   }
 }
 
+const accountingMigrations = [
+  `ALTER TABLE expense_items ADD COLUMN accounting_status TEXT NOT NULL DEFAULT 'recognized';`,
+  `ALTER TABLE expense_items ADD COLUMN source_transaction_id TEXT REFERENCES transactions(id) ON DELETE SET NULL;`,
+  `ALTER TABLE expense_reimbursements ADD COLUMN status TEXT NOT NULL DEFAULT 'settled';`,
+];
+
+for (const migration of accountingMigrations) {
+  try {
+    sqlite.exec(migration);
+  } catch {
+    // Additive migration already applied. Existing rows remain recognized/settled.
+  }
+}
+
 sqlite.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS future_flows_detection_key_unique
   ON future_flows(detection_key)
   WHERE detection_key IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS expense_reimbursements_transaction_unique
+  ON expense_reimbursements(transaction_id)
+  WHERE transaction_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS expense_items_source_transaction_unique
+  ON expense_items(source_transaction_id)
+  WHERE source_transaction_id IS NOT NULL;
 `);
 
 export const db = drizzle(sqlite, { schema });

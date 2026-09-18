@@ -50,6 +50,40 @@ async function qontoFetch(endpoint: string, config: QontoConfig) {
   return res.json();
 }
 
+/* Qonto invoice payloads are not published as a stable TypeScript contract. */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type QontoApiRecord = Record<string, any>;
+
+async function qontoFetchAllPages(
+  endpoint: string,
+  collectionKeys: string[],
+  config: QontoConfig,
+): Promise<QontoApiRecord[]> {
+  // Qonto responses vary by endpoint/version and are normalized while syncing.
+  const rows: QontoApiRecord[] = [];
+  const separator = endpoint.includes("?") ? "&" : "?";
+  let currentPage = 1;
+
+  while (true) {
+    const data = await qontoFetch(`${endpoint}${separator}per_page=100&current_page=${currentPage}`, config);
+    const pageRows = collectionKeys.reduce<QontoApiRecord[]>((found, key) => {
+      if (found.length > 0) return found;
+      const candidate = data?.[key];
+      return Array.isArray(candidate) ? candidate as QontoApiRecord[] : found;
+    }, []);
+    rows.push(...pageRows);
+
+    const meta = data?.meta;
+    const hasNextPage = meta
+      ? meta.next_page !== null && Number(meta.current_page ?? currentPage) < Number(meta.total_pages ?? currentPage)
+      : pageRows.length === 100;
+    if (!hasNextPage || pageRows.length === 0) break;
+    currentPage++;
+  }
+
+  return rows;
+}
+
 export async function syncQontoData(): Promise<{ success: boolean; message: string; counts?: Record<string, number> }> {
   const config = getQontoConfig();
 
@@ -215,8 +249,11 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
     // 3. Fetch customer invoices via /v2/client_invoices
     let fetchedClientInvoicesCount = 0;
     try {
-      const clientInvoicesData = await qontoFetch("/client_invoices?per_page=100&exclude_imported=false", config);
-      const rawInvoices = clientInvoicesData?.client_invoices || clientInvoicesData?.invoices || [];
+      const rawInvoices = await qontoFetchAllPages(
+        "/client_invoices?exclude_imported=false",
+        ["client_invoices", "invoices"],
+        config,
+      );
 
       for (const inv of rawInvoices) {
         let totalTtc = 0;
@@ -288,8 +325,11 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
     // 4. Fetch supplier invoices
     let fetchedSupplierInvoicesCount = 0;
     try {
-      const supplierInvoicesData = await qontoFetch("/supplier_invoices?per_page=100", config);
-      const rawSupplierInvoices = supplierInvoicesData?.supplier_invoices || [];
+      const rawSupplierInvoices = await qontoFetchAllPages(
+        "/supplier_invoices",
+        ["supplier_invoices", "invoices"],
+        config,
+      );
 
       for (const inv of rawSupplierInvoices) {
         let totalTtc = 0;

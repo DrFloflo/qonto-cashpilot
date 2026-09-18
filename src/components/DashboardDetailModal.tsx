@@ -38,13 +38,13 @@ export function DashboardDetailModal({
         <div className="flex items-center justify-between p-5 border-b border-border/60 shrink-0">
           <div>
             <h3 className="text-base font-semibold text-foreground">
-              {activeModal === "revenue" && "Détail du Chiffre d'Affaires du Mois (Encaissements)"}
-              {activeModal === "expenses" && "Détail des Charges du Mois (Décaissements)"}
-              {activeModal === "vat" && "Détail de la TVA à Provisionner"}
+              {activeModal === "revenue" && "Détail des encaissements bancaires du mois"}
+              {activeModal === "expenses" && "Détail des décaissements bancaires du mois"}
+              {activeModal === "vat" && "Détail de l’estimation annuelle de TVA"}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {activeModal === "revenue" && `Total encaissé : ${formatCurrency(kpis.monthRevenue)} (${kpis.monthRevenueItems.length} ligne(s))`}
-              {activeModal === "expenses" && `Total décaissé : ${formatCurrency(kpis.monthExpenses)} (${kpis.monthExpenseItems.length} ligne(s))`}
+              {activeModal === "revenue" && `Total encaissé : ${formatCurrency(kpis.monthInflows)} (${kpis.monthInflowItems.length} ligne(s)) — flux de trésorerie, pas CA comptable`}
+              {activeModal === "expenses" && `Total décaissé : ${formatCurrency(kpis.monthOutflows)} (${kpis.monthOutflowItems.length} ligne(s)) — flux de trésorerie, pas charges comptables`}
               {activeModal === "vat" && `Estimation nette : ${formatCurrency(kpis.vatToProvision)} (${kpis.vatProvisionItems.length} élément(s))`}
             </p>
           </div>
@@ -59,7 +59,7 @@ export function DashboardDetailModal({
         {/* Modal Body */}
         <div className="overflow-y-auto p-5 grow">
           {activeModal === "revenue" && (
-            kpis.monthRevenueItems.length === 0 ? (
+            kpis.monthInflowItems.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-8">Aucun encaissement enregistré pour ce mois.</p>
             ) : (
               <table className="w-full text-left text-xs">
@@ -72,7 +72,7 @@ export function DashboardDetailModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {kpis.monthRevenueItems.map((tx) => (
+                  {kpis.monthInflowItems.map((tx) => (
                     <tr key={tx.id} className="hover:bg-muted/20">
                       <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(tx.settledAt)}</td>
                       <td className="py-2.5 px-3 font-medium">{tx.label}</td>
@@ -88,7 +88,7 @@ export function DashboardDetailModal({
           )}
 
           {activeModal === "expenses" && (
-            kpis.monthExpenseItems.length === 0 ? (
+            kpis.monthOutflowItems.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-8">Aucun décaissement enregistré pour ce mois.</p>
             ) : (
               <table className="w-full text-left text-xs">
@@ -101,7 +101,7 @@ export function DashboardDetailModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {kpis.monthExpenseItems.map((tx) => (
+                  {kpis.monthOutflowItems.map((tx) => (
                     <tr key={tx.id} className="hover:bg-muted/20">
                       <td className="py-2.5 px-3 whitespace-nowrap">{formatDate(tx.settledAt)}</td>
                       <td className="py-2.5 px-3 font-medium">{tx.label}</td>
@@ -158,16 +158,18 @@ export function DashboardDetailModal({
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Total Collectée</span>
+                    <span className="text-[11px] text-muted-foreground block">TVA collectée réelle</span>
                     <strong className="text-emerald-600 dark:text-emerald-400">
-                      +{formatCurrency(currentVatSummary?.totalCollected ?? 0)}
+                      +{formatCurrency(currentVatSummary?.collectedReal ?? 0)}
                     </strong>
+                    <span className="block text-[10px] text-muted-foreground">Prévision : +{formatCurrency(currentVatSummary?.collectedFuture ?? 0)}</span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Total Déductible</span>
+                    <span className="text-[11px] text-muted-foreground block">TVA déductible réelle</span>
                     <strong className="text-rose-600 dark:text-rose-400">
-                      -{formatCurrency(currentVatSummary?.totalDeductible ?? 0)}
+                      -{formatCurrency(currentVatSummary?.deductibleReal ?? 0)}
                     </strong>
+                    <span className="block text-[10px] text-muted-foreground">Prévision : -{formatCurrency(currentVatSummary?.deductibleFuture ?? 0)}</span>
                   </div>
                   <div>
                     <span className="text-[11px] text-muted-foreground block">Crédit antérieur imputé</span>
@@ -176,7 +178,7 @@ export function DashboardDetailModal({
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[11px] text-muted-foreground block">Solde net</span>
+                    <span className="text-[11px] text-muted-foreground block">Solde réel provisionné</span>
                     <strong className={(currentVatSummary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}>
                       {(currentVatSummary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(currentVatSummary?.rawBalance ?? 0)}
                     </strong>

@@ -37,19 +37,22 @@ export function calculateExpenseAmounts(
     };
   }
 
-  const amountTtc = Number(input.amountTtc) || 0;
-  const vatRate = Number(input.vatRate) || 0;
-  const prorataRate = input.prorataRate !== undefined ? Number(input.prorataRate) : 100;
-  const amountHt = roundCurrency(amountTtc / (1 + vatRate / 100));
-  const vatTotal = Math.max(0, roundCurrency(amountTtc - amountHt));
+  const amountTtc = Math.max(0, roundCurrency(Number(input.amountTtc) || 0));
+  const vatRate = Math.max(0, Number(input.vatRate) || 0);
+  const prorataRate = Math.min(100, Math.max(0, input.prorataRate !== undefined ? Number(input.prorataRate) : 100));
+  const professionalTtcCents = Math.round(amountTtc * 100 * (prorataRate / 100));
+  const professionalHtCents = Math.round(professionalTtcCents / (1 + vatRate / 100));
+  const deductibleVatCents = Math.max(0, professionalTtcCents - professionalHtCents);
 
   return {
     amountTtc,
-    amountHt,
+    // Accounting values contain only the professional portion. The original
+    // receipt total remains available in amountTtc for audit/display purposes.
+    amountHt: professionalHtCents / 100,
     vatRate,
     prorataRate,
-    vatDeductible: roundCurrency(vatTotal * (prorataRate / 100)),
-    reimbursableAmount: roundCurrency(amountTtc * (prorataRate / 100)),
+    vatDeductible: deductibleVatCents / 100,
+    reimbursableAmount: professionalTtcCents / 100,
     distanceKm: null,
   };
 }

@@ -23,7 +23,7 @@ export function ExpenseHeader({
           Notes de Frais & Indemnités Kilométriques
         </h2>
         <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-          Gérez les notes de frais (TTC, TVA déductible), barèmes IK et suivez les remboursements globaux par collaborateur.
+          La charge HT professionnelle et la TVA sont comptabilisées à la date de dépense ; le remboursement règle uniquement la dette collaborateur.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -79,9 +79,9 @@ export function ExpenseKpis({ remaining, due, reimbursed, deductibleVat, expense
       valueClass: "text-emerald-600 dark:text-emerald-400",
     },
     {
-      label: "TVA Déductible générée",
+      label: "TVA déductible documentée",
       value: deductibleVat,
-      description: "Inclus dans les déclarations de TVA",
+      description: "Attachée à la date des notes de frais",
       icon: <Sparkles className="w-4 h-4" />,
       iconClass: "bg-purple-500/10 text-purple-500",
       valueClass: "text-purple-600 dark:text-purple-400",

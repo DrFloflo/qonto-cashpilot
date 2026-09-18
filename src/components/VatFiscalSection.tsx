@@ -33,7 +33,7 @@ export function VatFiscalSection({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                TVA sur l&apos;Exercice Fiscal ({summary?.fiscalYear.startDateStr} au {summary?.fiscalYear.endDateStr})
+                TVA — estimation annuelle ({summary?.fiscalYear.startDateStr} au {summary?.fiscalYear.endDateStr})
               </h3>
               <select
                 value={selectedFiscalOffset}
@@ -49,7 +49,7 @@ export function VatFiscalSection({
               </select>
             </div>
             <span className="text-[10px] text-muted-foreground">
-              {summary?.fiscalYear.regimeLabel} • Exigibilité {summary?.fiscalYear.paymentMethod === "debits" ? "sur les débits" : "sur encaissements"}
+              {summary?.fiscalYear.regimeLabel} • Exigibilité {summary?.fiscalYear.paymentMethod === "debits" ? "sur les débits" : "sur encaissements"} • estimation annuelle, hors calendrier déclaratif périodique
               {selectedFiscalOffset < 0 && " (Exercice clôturé)"}
             </span>
           </div>
@@ -72,22 +72,22 @@ export function VatFiscalSection({
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
         <div className="p-2.5 rounded-lg bg-background border border-border/60">
-          <div className="text-muted-foreground text-[11px]">Total TVA Collectée (Réelle + Prévi)</div>
+          <div className="text-muted-foreground text-[11px]">TVA collectée réelle</div>
           <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
-            +{formatCurrency(summary?.totalCollected ?? 0)}
+            +{formatCurrency(summary?.collectedReal ?? 0)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-0.5">
-            Réel: {formatCurrency(summary?.collectedReal ?? 0)}
+            Prévision séparée : +{formatCurrency(summary?.collectedFuture ?? 0)}
           </div>
         </div>
 
         <div className="p-2.5 rounded-lg bg-background border border-border/60">
-          <div className="text-muted-foreground text-[11px]">Total TVA Déductible (Réelle + Prévi)</div>
+          <div className="text-muted-foreground text-[11px]">TVA déductible réelle</div>
           <div className="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-0.5">
-            -{formatCurrency(summary?.totalDeductible ?? 0)}
+            -{formatCurrency(summary?.deductibleReal ?? 0)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-0.5">
-            Réel: {formatCurrency(summary?.deductibleReal ?? 0)}
+            Prévision séparée : -{formatCurrency(summary?.deductibleFuture ?? 0)}
           </div>
         </div>
 
@@ -102,7 +102,7 @@ export function VatFiscalSection({
         </div>
 
         <div className="p-2.5 rounded-lg bg-background border border-border/60">
-          <div className="text-muted-foreground text-[11px]">Solde net de TVA</div>
+          <div className="text-muted-foreground text-[11px]">Solde réel de TVA</div>
           <div className={`text-sm font-semibold mt-0.5 ${(summary?.rawBalance ?? 0) >= 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
             {(summary?.rawBalance ?? 0) >= 0 ? "+" : ""}{formatCurrency(summary?.rawBalance ?? 0)}
           </div>
@@ -113,7 +113,7 @@ export function VatFiscalSection({
 
       </div>
 
-      {/* Encarts Activité : CA et Charges de l'année en cours / exercice */}
+      {/* Accounting activity is invoice/expense-document based and HT. */}
       <div className="mt-4 pt-3 border-t border-border/60">
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wider">
@@ -126,11 +126,11 @@ export function VatFiscalSection({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          {/* Encart CA de l'année en cours */}
+          {/* Realized figures are accounting documents; forecasts stay separate. */}
           <div className="p-2.5 rounded-lg bg-background border border-border/60">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-[11px]">
-                Chiffre d&apos;Affaires ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
+                Produits comptabilisés HT ({selectedFiscalOffset === 0 ? "Année en cours" : "Année N-1"})
               </span>
               <div className="p-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 <TrendingUp className="w-3.5 h-3.5" />
@@ -151,7 +151,7 @@ export function VatFiscalSection({
           <div className="p-2.5 rounded-lg bg-background border border-border/60">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-[11px]">
-                Total des Charges ({selectedFiscalOffset === 0 ? "Exercice en cours" : "Exercice clôturé"})
+                Charges comptabilisées HT ({selectedFiscalOffset === 0 ? "exercice en cours" : "exercice clôturé"})
               </span>
               <div className="p-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
                 <TrendingDown className="w-3.5 h-3.5" />
@@ -168,34 +168,32 @@ export function VatFiscalSection({
             </div>
           </div>
 
-          {/* Encart Résultat Net Estimé */}
+          {/* This is not statutory net profit: tax, depreciation and adjustments are excluded. */}
           <div className="p-2.5 rounded-lg bg-background border border-border/60">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-[11px]">Résultat Estimé (CA - Charges)</span>
+              <span className="text-muted-foreground text-[11px]">Solde d&apos;activité estimé HT</span>
               <span
                 className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                  (summary?.netResult ?? 0) >= 0
+                  (summary?.activityBalance ?? 0) >= 0
                     ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
                     : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
                 }`}
               >
-                {(summary?.netResult ?? 0) >= 0 ? "Bénéfice" : "Déficit"}
+                {(summary?.activityBalance ?? 0) >= 0 ? "Positif" : "Négatif"}
               </span>
             </div>
             <div
               className={`text-sm font-semibold mt-1 ${
-                (summary?.netResult ?? 0) >= 0
+                (summary?.activityBalance ?? 0) >= 0
                   ? "text-emerald-600 dark:text-emerald-400"
                   : "text-rose-600 dark:text-rose-400"
               }`}
             >
-              {(summary?.netResult ?? 0) >= 0 ? "+" : ""}
-              {formatCurrency(summary?.netResult ?? 0)}
+              {(summary?.activityBalance ?? 0) >= 0 ? "+" : ""}
+              {formatCurrency(summary?.activityBalance ?? 0)}
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              {summary?.totalRevenue && summary.totalRevenue > 0
-                ? `Marge nette : ${Math.round(((summary.netResult ?? 0) / summary.totalRevenue) * 100)}% du CA`
-                : "Solde net estimé"}
+              Produits moins charges identifiés, hors impôts, amortissements et écritures de clôture
             </div>
           </div>
         </div>
