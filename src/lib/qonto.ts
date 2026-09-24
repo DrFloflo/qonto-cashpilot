@@ -12,6 +12,7 @@ import {
   supplierInvoices,
   syncStates,
 } from "@/db/schema";
+import { ne } from "drizzle-orm";
 
 interface QontoConfig {
   apiKey: string;
@@ -97,13 +98,15 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
   const nowIso = new Date().toISOString();
 
   try {
-    // 1. Fetch organization & account details to get bank_account_id and iban
+    // 1. Fetch organization & account details to get bank_account_id and iban.
+    // Qonto does not guarantee that the main account is the first item: wallet
+    // accounts (for example a VAT reserve) may be returned before it.
     const orgData = await qontoFetch("/organization", config);
-    const bankAccounts = orgData?.organization?.bank_accounts || [];
+    const bankAccounts: QontoApiRecord[] = orgData?.organization?.bank_accounts || [];
 
-    const mainAccount = bankAccounts[0];
+    const mainAccount = selectMainBankAccount(bankAccounts);
     if (!mainAccount) {
-      throw new Error("Aucun compte bancaire trouvé pour cette organisation dans Qonto.");
+      throw new Error("Aucun compte bancaire actif trouvé pour cette organisation dans Qonto.");
     }
 
     const bankAccountId = mainAccount.id || mainAccount.slug;
@@ -131,6 +134,10 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
         },
       })
       .run();
+
+    // This application displays one Qonto account. Remove a previously selected
+    // wallet account so row ordering cannot keep exposing its stale balance.
+    db.delete(accounts).where(ne(accounts.id, bankAccountId)).run();
 
     // 2. Fetch transactions using bank_account_id / iban parameter
     let fetchedTransactionsCount = 0;
@@ -240,7 +247,7 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
         }
       }
     } catch (e: unknown) {
-      console.warn("Could not fetch Qonto transactions:", (e as Error).message);
+      throw new Error(`Impossible de récupérer les transactions Qonto : ${(e as Error).message}`);
     }
 
     // Detect recurring transactions after all transaction pages have been persisted.
@@ -447,4 +454,16 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
       message: `Erreur lors de la synchronisation : ${errorMsg}`,
     };
   }
+}
+
+export function selectMainBankAccount(bankAccounts: QontoApiRecord[]): QontoApiRecord | null {
+  if (bankAccounts.length === 0) return null;
+
+  const activeAccounts = bankAccounts.filter((account) => account.status === "active");
+  const candidates = activeAccounts.length > 0 ? activeAccounts : bankAccounts;
+
+  return candidates.find((account) => account.main === true)
+    ?? candidates.find((account) => account.is_external_account !== true)
+    ?? candidates[0]
+    ?? null;
 }
