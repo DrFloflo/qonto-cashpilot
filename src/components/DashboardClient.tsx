@@ -13,8 +13,9 @@ import { DashboardDetailModal } from "@/components/DashboardDetailModal";
 import { ExpenseSection } from "@/components/ExpenseSection";
 import { FixedAssetsSection } from "@/components/FixedAssetsSection";
 import { FinancialAssistant } from "@/components/FinancialAssistant";
+import { CustomerRevenueSection } from "@/components/customer-revenue/CustomerRevenueSection";
 import { syncAction } from "@/app/actions";
-import { Landmark, LayoutDashboard, Receipt } from "lucide-react";
+import { Landmark, LayoutDashboard, Receipt, Users } from "lucide-react";
 
 interface DashboardClientProps {
   initialData: DashboardData;
@@ -27,7 +28,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   const [notification, setNotification] = useState<DashboardNotificationState | null>(null);
   const [activeModal, setActiveModal] = useState<DetailModalType>(null);
   const [selectedFiscalOffset, setSelectedFiscalOffset] = useState(0);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "expenses" | "assets">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "expenses" | "assets" | "customerRevenue">("dashboard");
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -87,7 +88,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
         />
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 border-b border-border/80 pb-3">
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-border/80 pb-3">
           <button
             onClick={() => setActiveTab("dashboard")}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
@@ -120,6 +121,17 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           >
             <Landmark className="w-4 h-4" />
             Immobilisations & amortissements
+          </button>
+          <button
+            onClick={() => setActiveTab("customerRevenue")}
+            className={`inline-flex shrink-0 items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === "customerRevenue"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            CA par client
           </button>
         </div>
 
@@ -168,9 +180,13 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           <section>
             <ExpenseSection onDataUpdated={handleDataUpdated} />
           </section>
-        ) : (
+        ) : activeTab === "assets" ? (
           <section>
             <FixedAssetsSection onDataUpdated={handleDataUpdated} />
+          </section>
+        ) : (
+          <section>
+            <CustomerRevenueSection />
           </section>
         )}
       </main>

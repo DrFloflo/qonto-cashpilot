@@ -5,3 +5,4 @@ export * from "./actions/expenses";
 export * from "./actions/future-flows";
 export * from "./actions/reimbursements";
 export * from "./actions/fixed-assets";
+export * from "./actions/customer-revenue";

@@ -292,14 +292,24 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
           totalHt = Math.max(0, totalTtc - totalVat);
         }
 
-        const clientName = inv.client?.name || (inv.client?.first_name ? `${inv.client.first_name} ${inv.client.last_name || ""}`.trim() : "Client");
+        const clientName = inv.client?.name || (inv.client?.first_name ? `${inv.client.first_name} ${inv.client.last_name || ""}`.trim() : "Client non renseigné");
+        const customerId = inv.client?.id || inv.client_id || null;
+        const normalizedClientName = clientName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+        const rawType = String(inv.document_type || inv.type || "").toLowerCase();
+        const documentType = rawType.includes("credit") || rawType.includes("avoir") || inv.is_credit_note ? "credit_note" : "invoice";
+        const currency = inv.currency || inv.total_amount?.currency || "EUR";
 
         db.insert(customerInvoices)
           .values({
             id: inv.id,
             invoiceNumber: inv.number || inv.invoice_number || `FAC-${inv.id}`,
-            clientName: clientName,
+            clientName,
+            customerId,
+            normalizedClientName,
             status: inv.status || "unpaid",
+            documentType,
+            originalInvoiceId: inv.original_invoice_id || inv.invoice_id || null,
+            currency,
             issueDate: inv.issue_date || inv.created_at?.split("T")[0] || nowIso.split("T")[0],
             dueDate: inv.due_date || null,
             paidAt: inv.paid_at || null,
@@ -312,8 +322,14 @@ export async function syncQontoData(): Promise<{ success: boolean; message: stri
             target: customerInvoices.id,
             set: {
               invoiceNumber: inv.number || inv.invoice_number || `FAC-${inv.id}`,
-              clientName: clientName,
+              clientName,
+              customerId,
+              normalizedClientName,
               status: inv.status || "unpaid",
+              documentType,
+              originalInvoiceId: inv.original_invoice_id || inv.invoice_id || null,
+              currency,
+              issueDate: inv.issue_date || inv.created_at?.split("T")[0] || nowIso.split("T")[0],
               dueDate: inv.due_date || null,
               paidAt: inv.paid_at || null,
               totalAmountHt: Number(totalHt),

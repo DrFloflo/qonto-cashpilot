@@ -43,7 +43,12 @@ sqlite.exec(`
     id TEXT PRIMARY KEY,
     invoice_number TEXT NOT NULL,
     client_name TEXT NOT NULL,
+    customer_id TEXT,
+    normalized_client_name TEXT,
     status TEXT NOT NULL,
+    document_type TEXT NOT NULL DEFAULT 'invoice',
+    original_invoice_id TEXT,
+    currency TEXT NOT NULL DEFAULT 'EUR',
     issue_date TEXT NOT NULL,
     due_date TEXT,
     paid_at TEXT,
@@ -51,6 +56,23 @@ sqlite.exec(`
     total_vat_amount REAL NOT NULL,
     total_amount_ttc REAL NOT NULL,
     raw_json TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS canonical_customers (
+    id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_merge_mappings (
+    id TEXT PRIMARY KEY,
+    canonical_customer_id TEXT NOT NULL REFERENCES canonical_customers(id) ON DELETE CASCADE,
+    identity_key TEXT NOT NULL UNIQUE,
+    identity_type TEXT NOT NULL,
+    source_label TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS supplier_invoices (
@@ -108,6 +130,16 @@ sqlite.exec(`
     mileage_rate REAL NOT NULL DEFAULT 0.603,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_invoice_executor_allocations (
+    id TEXT PRIMARY KEY,
+    customer_invoice_id TEXT NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE,
+    collaborator_id TEXT NOT NULL REFERENCES collaborators(id) ON DELETE RESTRICT,
+    share_basis_points INTEGER NOT NULL CHECK (share_basis_points > 0 AND share_basis_points <= 10000),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (customer_invoice_id, collaborator_id)
   );
 
   CREATE TABLE IF NOT EXISTS expense_items (
@@ -265,6 +297,22 @@ for (const migration of accountingMigrations) {
   }
 }
 
+const customerRevenueMigrations = [
+  `ALTER TABLE customer_invoices ADD COLUMN customer_id TEXT;`,
+  `ALTER TABLE customer_invoices ADD COLUMN normalized_client_name TEXT;`,
+  `ALTER TABLE customer_invoices ADD COLUMN document_type TEXT NOT NULL DEFAULT 'invoice';`,
+  `ALTER TABLE customer_invoices ADD COLUMN original_invoice_id TEXT;`,
+  `ALTER TABLE customer_invoices ADD COLUMN currency TEXT NOT NULL DEFAULT 'EUR';`,
+];
+
+for (const migration of customerRevenueMigrations) {
+  try {
+    sqlite.exec(migration);
+  } catch {
+    // Additive migration already applied; historical rows use normalized-name fallback.
+  }
+}
+
 sqlite.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS future_flows_detection_key_unique
   ON future_flows(detection_key)
@@ -297,6 +345,9 @@ sqlite.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS fixed_asset_sources_supplier_invoice_unique
   ON fixed_asset_sources(supplier_invoice_id)
   WHERE supplier_invoice_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS customer_invoice_executor_unique
+  ON customer_invoice_executor_allocations(customer_invoice_id, collaborator_id);
 `);
 
 export const db = drizzle(sqlite, { schema });

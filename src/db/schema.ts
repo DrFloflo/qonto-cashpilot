@@ -36,7 +36,12 @@ export const customerInvoices = sqliteTable("customer_invoices", {
   id: text("id").primaryKey(), // Qonto invoice id
   invoiceNumber: text("invoice_number").notNull(),
   clientName: text("client_name").notNull(),
+  customerId: text("customer_id"), // Stable Qonto client identifier when available
+  normalizedClientName: text("normalized_client_name"),
   status: text("status").notNull(), // "paid", "unpaid", "pending", "overdue", "canceled"
+  documentType: text("document_type").notNull().default("invoice"), // "invoice" | "credit_note"
+  originalInvoiceId: text("original_invoice_id"),
+  currency: text("currency").notNull().default("EUR"),
   issueDate: text("issue_date").notNull(),
   dueDate: text("due_date"),
   paidAt: text("paid_at"),
@@ -44,6 +49,27 @@ export const customerInvoices = sqliteTable("customer_invoices", {
   totalVatAmount: real("total_vat_amount").notNull(),
   totalAmountTtc: real("total_amount_ttc").notNull(),
   rawJson: text("raw_json"),
+});
+
+/** User-defined canonical customer. Source invoices are never modified by merges. */
+export const canonicalCustomers = sqliteTable("canonical_customers", {
+  id: text("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** Maps stable Qonto identities or normalized-name identities to a canonical customer. */
+export const customerMergeMappings = sqliteTable("customer_merge_mappings", {
+  id: text("id").primaryKey(),
+  canonicalCustomerId: text("canonical_customer_id")
+    .notNull()
+    .references(() => canonicalCustomers.id, { onDelete: "cascade" }),
+  identityKey: text("identity_key").notNull().unique(),
+  identityType: text("identity_type").notNull(), // "qonto_id" | "normalized_name" | "unknown"
+  sourceLabel: text("source_label").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 /**
@@ -116,6 +142,20 @@ export const collaborators = sqliteTable("collaborators", {
   mileageRate: real("mileage_rate").notNull().default(0.603), // € / km
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
+});
+
+/** Revenue allocation of one source invoice between one or more executors. */
+export const customerInvoiceExecutorAllocations = sqliteTable("customer_invoice_executor_allocations", {
+  id: text("id").primaryKey(),
+  customerInvoiceId: text("customer_invoice_id")
+    .notNull()
+    .references(() => customerInvoices.id, { onDelete: "cascade" }),
+  collaboratorId: text("collaborator_id")
+    .notNull()
+    .references(() => collaborators.id, { onDelete: "restrict" }),
+  shareBasisPoints: integer("share_basis_points").notNull(), // 10000 = 100.00%
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 /**
@@ -240,6 +280,12 @@ export const fixedAssetDisposals = sqliteTable("fixed_asset_disposals", {
 export type Account = typeof accounts.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type CustomerInvoice = typeof customerInvoices.$inferSelect;
+export type CanonicalCustomer = typeof canonicalCustomers.$inferSelect;
+export type NewCanonicalCustomer = typeof canonicalCustomers.$inferInsert;
+export type CustomerMergeMapping = typeof customerMergeMappings.$inferSelect;
+export type NewCustomerMergeMapping = typeof customerMergeMappings.$inferInsert;
+export type CustomerInvoiceExecutorAllocation = typeof customerInvoiceExecutorAllocations.$inferSelect;
+export type NewCustomerInvoiceExecutorAllocation = typeof customerInvoiceExecutorAllocations.$inferInsert;
 export type SupplierInvoice = typeof supplierInvoices.$inferSelect;
 export type FutureFlow = typeof futureFlows.$inferSelect;
 export type NewFutureFlow = typeof futureFlows.$inferInsert;
